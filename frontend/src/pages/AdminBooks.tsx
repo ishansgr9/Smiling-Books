@@ -26,7 +26,7 @@ export const AdminBooks: React.FC = () => {
       setTotalBooks(data.total || 0);
     } catch (e: any) {
       console.error('Failed to load admin books listing:', e);
-      setError(e.message || 'Could not retrieve catalog list.Please confirm again');
+      setError(e.message || 'Could not retrieve catalog list.');
     } finally {
       setLoading(false);
     }
@@ -176,10 +176,10 @@ export const AdminBooks: React.FC = () => {
                     {/* Rights status */}
                     <td className="px-6 py-4">
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${book.rights_status === 'PUBLIC_DOMAIN'
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                          : book.rights_status === 'PENDING_REVIEW'
-                            ? 'bg-amber-50 text-amber-700 border-amber-100'
-                            : 'bg-blue-50 text-blue-700 border-blue-100'
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                        : book.rights_status === 'PENDING_REVIEW'
+                          ? 'bg-amber-50 text-amber-700 border-amber-100'
+                          : 'bg-blue-50 text-blue-700 border-blue-100'
                         }`}>
                         {getRightsLabel(book.rights_status)}
                       </span>
@@ -191,8 +191,8 @@ export const AdminBooks: React.FC = () => {
                         onClick={() => handlePublishToggle(book)}
                         disabled={book.rights_status === 'PENDING_REVIEW'}
                         className={`inline-flex items-center justify-center p-1 rounded-full transition-all ${book.published
-                            ? 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100'
-                            : 'text-stone-400 bg-stone-50 hover:bg-stone-200'
+                          ? 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100'
+                          : 'text-stone-400 bg-stone-50 hover:bg-stone-200'
                           } disabled:opacity-50 disabled:cursor-not-allowed`}
                         title={book.rights_status === 'PENDING_REVIEW' ? 'Pending review books cannot be published' : 'Toggle publish status'}
                       >
