@@ -14,6 +14,8 @@ import (
 	"backend/internal/middleware"
 	"backend/internal/repository"
 	"backend/internal/storage"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 func main() {
@@ -22,6 +24,10 @@ func main() {
 	// 1. Parse command line flags
 	migrateFlag := flag.Bool("migrate", false, "Run database schema migrations and exit")
 	seedFlag := flag.Bool("seed", false, "Seed the database with default records and exit")
+	createAdminFlag := flag.Bool("create-admin", false, "Create a new administrator user and exit")
+	adminNameFlag := flag.String("name", "", "Name of the new administrator")
+	adminEmailFlag := flag.String("email", "", "Email of the new administrator")
+	adminPasswordFlag := flag.String("password", "", "Password of the new administrator")
 	flag.Parse()
 
 	// 2. Load config
@@ -39,6 +45,40 @@ func main() {
 
 	// Instantiate repo
 	repo := repository.NewPostgresBookRepository(db.Pool)
+
+	// If create-admin flag is set, run it and exit
+	if *createAdminFlag {
+		if *adminNameFlag == "" || *adminEmailFlag == "" || *adminPasswordFlag == "" {
+			log.Fatal("Error: -create-admin requires -name, -email, and -password flags")
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+
+		log.Printf("Checking if administrator already exists: %s", *adminEmailFlag)
+		existing, err := repo.GetUserByEmail(ctx, *adminEmailFlag)
+		if err != nil {
+			log.Fatalf("Error checking user existence: %v", err)
+		}
+		if existing != nil {
+			log.Fatalf("Error: Admin user with email %s already exists!", *adminEmailFlag)
+		}
+
+		log.Printf("Hashing password for %s...", *adminNameFlag)
+		passHash, err := bcrypt.GenerateFromPassword([]byte(*adminPasswordFlag), bcrypt.DefaultCost)
+		if err != nil {
+			log.Fatalf("Failed to hash password: %v", err)
+		}
+
+		log.Println("Creating user in database...")
+		_, err = repo.CreateUser(ctx, *adminNameFlag, *adminEmailFlag, string(passHash), "ADMIN")
+		if err != nil {
+			log.Fatalf("Failed to create admin user: %v", err)
+		}
+
+		log.Printf("SUCCESS: Administrator account %s created successfully!", *adminEmailFlag)
+		return
+	}
 
 	// If flags are set, run them and exit
 	if *migrateFlag || *seedFlag {
