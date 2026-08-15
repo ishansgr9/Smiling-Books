@@ -9,7 +9,7 @@ interface BookCardProps {
 
 export const BookCard: React.FC<BookCardProps> = ({ book }) => {
   return (
-    <div className="bg-white rounded-2xl overflow-hidden border border-orange-100/50 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col group h-full">
+    <div className="bg-white rounded-2xl overflow-hidden border border-brand-100/50 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col group h-full">
       {/* Cover Image Container */}
       <div className="relative aspect-[3/4] bg-stone-100 overflow-hidden flex items-center justify-center">
         {book.cover_url ? (

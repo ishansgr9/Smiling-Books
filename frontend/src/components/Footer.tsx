@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { BookOpen, Heart } from 'lucide-react';
+import { BookOpen } from 'lucide-react';
 
 export const Footer: React.FC = () => {
   return (
@@ -36,7 +36,7 @@ export const Footer: React.FC = () => {
                 <Link to="/library" className="hover:text-brand-400 transition-colors">Library Catalog</Link>
               </li>
               <li>
-                <Link to="/about" className="hover:text-brand-400 transition-colors">About Project</Link>
+                <Link to="/donate" className="hover:text-brand-400 transition-colors">Donate</Link>
               </li>
               <li>
                 <a 
@@ -66,11 +66,6 @@ export const Footer: React.FC = () => {
         {/* Bottom Banner */}
         <div className="mt-12 pt-8 border-t border-stone-800 flex flex-col sm:flex-row justify-between items-center text-xs text-stone-500">
           <p>© {new Date().getFullYear()} Akshar Paaul NGO. All rights reserved.</p>
-          <p className="flex items-center mt-4 sm:mt-0">
-            <span>Made with</span>
-            <Heart size={10} className="mx-1 text-red-500 fill-red-500 animate-pulse" />
-            <span>for Service-Learning</span>
-          </p>
         </div>
       </div>
     </footer>

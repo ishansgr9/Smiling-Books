@@ -34,7 +34,7 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
   const hasFilters = selectedCategory > 0 || selectedLanguage > 0 || selectedAgeGroup !== 'All' || selectedSort !== 'title';
 
   return (
-    <div className="bg-white rounded-2xl border border-orange-100/50 p-6 shadow-sm space-y-6">
+    <div className="bg-white rounded-2xl border border-brand-100/50 p-6 shadow-sm space-y-6">
       <div className="flex items-center justify-between border-b border-stone-100 pb-3">
         <div className="flex items-center space-x-2 text-stone-900">
           <Filter size={16} className="text-brand-500" />

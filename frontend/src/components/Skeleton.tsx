@@ -12,7 +12,7 @@ export const Skeleton: React.FC<SkeletonProps> = ({ className = "" }) => {
 
 export const BookCardSkeleton: React.FC = () => {
   return (
-    <div className="bg-white rounded-2xl border border-orange-100/50 p-4 space-y-4 flex flex-col h-full shadow-sm">
+    <div className="bg-white rounded-2xl border border-brand-100/50 p-4 space-y-4 flex flex-col h-full shadow-sm">
       {/* Cover Shimmer */}
       <div className="aspect-[3/4] bg-stone-100 rounded-xl relative overflow-hidden animate-shimmer" />
       

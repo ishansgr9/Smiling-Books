@@ -131,7 +131,7 @@ export const BookDetails: React.FC = () => {
       </div>
 
       {/* Main Details Panel */}
-      <section className="bg-white rounded-3xl border border-orange-100/50 p-6 sm:p-8 md:p-10 shadow-sm flex flex-col md:flex-row gap-8 md:gap-12">
+      <section className="bg-white rounded-3xl border border-brand-100/50 p-6 sm:p-8 md:p-10 shadow-sm flex flex-col md:flex-row gap-8 md:gap-12">
         
         {/* Large Cover */}
         <div className="w-full md:w-80 shrink-0 bg-stone-100 rounded-2xl overflow-hidden aspect-[3/4] relative border border-stone-200/50 shadow-sm flex items-center justify-center">
@@ -226,7 +226,7 @@ export const BookDetails: React.FC = () => {
       {/* Related Books */}
       {relatedBooks.length > 0 && (
         <section className="space-y-6">
-          <div className="border-b border-orange-100/50 pb-3">
+          <div className="border-b border-brand-100/50 pb-3">
             <h2 className="font-serif text-xl font-bold text-stone-900">Related Books</h2>
             <p className="text-xs text-stone-500">Explore other books in the category "{book.category_name}"</p>
           </div>

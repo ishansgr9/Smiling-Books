@@ -166,7 +166,7 @@ export const Library: React.FC = () => {
       />
 
       {/* Results Count & Loader status */}
-      <div className="flex items-center justify-between border-b border-orange-100/50 pb-2">
+      <div className="flex items-center justify-between border-b border-brand-100/50 pb-2">
         <span className="text-xs font-semibold text-stone-400 tracking-wider uppercase">
           {loading ? 'Searching...' : `${totalBooks} Books Available`}
         </span>
@@ -183,7 +183,7 @@ export const Library: React.FC = () => {
           ))}
         </div>
       ) : (
-        <div className="text-center py-20 bg-white rounded-2xl border border-orange-100/40 max-w-xl mx-auto shadow-sm">
+        <div className="text-center py-20 bg-white rounded-2xl border border-brand-100/40 max-w-xl mx-auto shadow-sm">
           <BookOpen size={48} className="mx-auto text-stone-300 stroke-[1.2] mb-4" />
           <h3 className="font-serif text-lg font-bold text-stone-800 mb-1">No Books Found</h3>
           <p className="text-sm text-stone-500 max-w-xs mx-auto mb-6">
@@ -201,7 +201,7 @@ export const Library: React.FC = () => {
 
       {/* Pagination Controls */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-center space-x-2 pt-6 border-t border-orange-100/30">
+        <div className="flex items-center justify-center space-x-2 pt-6 border-t border-brand-100/30">
           <button
             onClick={() => handlePageChange(currentPage - 1)}
             disabled={currentPage === 1}

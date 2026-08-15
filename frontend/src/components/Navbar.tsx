@@ -19,7 +19,7 @@ export const Navbar: React.FC = () => {
   };
 
   return (
-    <nav className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-orange-100/50">
+    <nav className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-brand-100/50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           {/* Logo Brand */}
@@ -29,8 +29,9 @@ export const Navbar: React.FC = () => {
                 <BookOpen size={20} />
               </div>
               <div>
-                <span className="font-serif text-lg font-bold tracking-tight text-stone-900 block leading-tight">
-                  SMILING BOOKS
+                <span className="font-serif text-lg font-bold tracking-tight block leading-tight">
+                  <span className="text-brand-500">SMILING </span>
+                  <span className="text-pink-500 font-extrabold">BOOKS</span>
                 </span>
                 <span className="text-[10px] text-stone-500 font-sans tracking-wide block">
                   An Akshar Paaul Digital Library
@@ -43,7 +44,12 @@ export const Navbar: React.FC = () => {
           <div className="hidden md:flex items-center space-x-8">
             <Link to="/" className={isActive('/')}>Home</Link>
             <Link to="/library" className={isActive('/library')}>Library</Link>
-            <Link to="/about" className={isActive('/about')}>About</Link>
+            <Link 
+              to="/donate" 
+              className="px-4.5 py-1.5 bg-pink-500 hover:bg-pink-600 text-white text-xs font-extrabold uppercase tracking-wider rounded-full transition-all shadow-sm hover:shadow"
+            >
+              Donate
+            </Link>
 
             {isAuthenticated ? (
               <div className="flex items-center space-x-4">
@@ -89,7 +95,7 @@ export const Navbar: React.FC = () => {
 
       {/* Mobile Menu */}
       {isOpen && (
-        <div className="md:hidden bg-white/95 border-b border-orange-100/50 absolute left-0 right-0 py-4 px-6 space-y-4 shadow-lg animate-fadeIn">
+        <div className="md:hidden bg-white/95 border-b border-brand-100/50 absolute left-0 right-0 py-4 px-6 space-y-4 shadow-lg animate-fadeIn">
           <Link
             to="/"
             onClick={() => setIsOpen(false)}
@@ -105,11 +111,11 @@ export const Navbar: React.FC = () => {
             Library
           </Link>
           <Link
-            to="/about"
+            to="/donate"
             onClick={() => setIsOpen(false)}
-            className="block text-stone-700 hover:text-brand-600 font-medium py-1"
+            className="block text-center py-2 bg-pink-500 hover:bg-pink-600 text-white font-bold rounded-full text-xs uppercase tracking-wider transition-colors"
           >
-            About
+            Donate
           </Link>
           
           <div className="pt-4 border-t border-stone-100">

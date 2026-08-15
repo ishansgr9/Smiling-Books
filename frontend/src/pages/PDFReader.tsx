@@ -92,7 +92,7 @@ export const PDFReader: React.FC = () => {
   if (error || !book || !pdfURL) {
     return (
       <div className="h-[75vh] flex items-center justify-center p-4">
-        <div className="text-center max-w-md space-y-4 bg-white border border-orange-100 rounded-3xl p-8 shadow-sm">
+        <div className="text-center max-w-md space-y-4 bg-white border border-brand-100 rounded-3xl p-8 shadow-sm">
           <AlertCircle size={44} className="mx-auto text-red-500 stroke-[1.2]" />
           <h2 className="font-serif text-xl font-bold text-stone-800">Reading Room Error</h2>
           <p className="text-sm text-stone-500 leading-relaxed">
@@ -114,7 +114,7 @@ export const PDFReader: React.FC = () => {
   return (
     <div 
       ref={containerRef}
-      className={`bg-stone-950 flex flex-col rounded-3xl overflow-hidden shadow-lg border border-orange-950/20 ${
+      className={`bg-stone-950 flex flex-col rounded-3xl overflow-hidden shadow-lg border border-brand-950/20 ${
         isFullscreen ? 'w-screen h-screen rounded-none' : 'w-full h-[82vh]'
       }`}
     >

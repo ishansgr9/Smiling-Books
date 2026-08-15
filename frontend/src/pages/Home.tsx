@@ -43,7 +43,8 @@ export const Home: React.FC = () => {
             NGO Initiative
           </span>
           <h1 className="font-serif text-4xl sm:text-5xl lg:text-6xl font-black text-white leading-tight">
-            SMILING BOOKS <br />
+            <span className="text-white">SMILING </span>
+            <span className="text-pink-500 font-extrabold">BOOKS</span> <br />
             <span className="text-brand-300">Digital Library</span>
           </h1>
           <p className="text-base sm:text-lg text-stone-300 leading-relaxed font-sans font-light">
@@ -56,12 +57,6 @@ export const Home: React.FC = () => {
             >
               <span>Explore the Library</span>
               <ArrowRight size={16} />
-            </Link>
-            <Link
-              to="/about"
-              className="px-6 py-3 bg-white/10 text-white border border-white/20 hover:bg-white/20 font-semibold rounded-full transition-all flex items-center justify-center"
-            >
-              About Smiling Books
             </Link>
           </div>
         </div>
@@ -78,8 +73,8 @@ export const Home: React.FC = () => {
 
       {/* Pillars of Content Rights */}
       <section className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        <div className="bg-white p-6 rounded-2xl border border-orange-100/30 shadow-sm space-y-3">
-          <div className="p-3 bg-orange-50 text-brand-600 rounded-xl w-fit">
+        <div className="bg-white p-6 rounded-2xl border border-brand-100/30 shadow-sm space-y-3">
+          <div className="p-3 bg-brand-50 text-brand-600 rounded-xl w-fit">
             <ShieldCheck size={24} />
           </div>
           <h3 className="font-serif text-lg font-bold text-stone-900">Copyright Compliant</h3>
@@ -87,8 +82,8 @@ export const Home: React.FC = () => {
             Every book in our digital repository is thoroughly checked to guarantee distribution rights. Read with peace of mind.
           </p>
         </div>
-        <div className="bg-white p-6 rounded-2xl border border-orange-100/30 shadow-sm space-y-3">
-          <div className="p-3 bg-orange-50 text-brand-600 rounded-xl w-fit">
+        <div className="bg-white p-6 rounded-2xl border border-brand-100/30 shadow-sm space-y-3">
+          <div className="p-3 bg-brand-50 text-brand-600 rounded-xl w-fit">
             <Compass size={24} />
           </div>
           <h3 className="font-serif text-lg font-bold text-stone-900">Completely Public</h3>
@@ -96,8 +91,8 @@ export const Home: React.FC = () => {
             Free access for normal readers. No signup, no forms, no logins. Just pick a book, open it, and begin reading.
           </p>
         </div>
-        <div className="bg-white p-6 rounded-2xl border border-orange-100/30 shadow-sm space-y-3">
-          <div className="p-3 bg-orange-50 text-brand-600 rounded-xl w-fit">
+        <div className="bg-white p-6 rounded-2xl border border-brand-100/30 shadow-sm space-y-3">
+          <div className="p-3 bg-brand-50 text-brand-600 rounded-xl w-fit">
             <Heart size={24} />
           </div>
           <h3 className="font-serif text-lg font-bold text-stone-900">Community Driven</h3>
@@ -109,7 +104,7 @@ export const Home: React.FC = () => {
 
       {/* Recently Added Section */}
       <section className="space-y-6">
-        <div className="flex justify-between items-end border-b border-orange-100/50 pb-3">
+        <div className="flex justify-between items-end border-b border-brand-100/50 pb-3">
           <div>
             <h2 className="font-serif text-2xl font-bold text-stone-900">Recently Added</h2>
             <p className="text-sm text-stone-500">Discover the latest books uploaded to our catalog</p>
@@ -132,7 +127,7 @@ export const Home: React.FC = () => {
             ))}
           </div>
         ) : (
-          <div className="text-center py-12 bg-white rounded-2xl border border-orange-100/30">
+          <div className="text-center py-12 bg-white rounded-2xl border border-brand-100/30">
             <BookOpen size={40} className="mx-auto text-stone-300 mb-2" />
             <p className="text-stone-500">No books found in the library catalog yet.</p>
           </div>
@@ -142,7 +137,7 @@ export const Home: React.FC = () => {
       {/* Browse by Category & Language */}
       <section className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {/* Categories */}
-        <div className="bg-white p-8 rounded-2xl border border-orange-100/30 shadow-sm space-y-4">
+        <div className="bg-white p-8 rounded-2xl border border-brand-100/30 shadow-sm space-y-4">
           <h3 className="font-serif text-lg font-bold text-stone-900">Browse by Category</h3>
           <div className="flex flex-wrap gap-2.5">
             {categories.map((cat) => (
@@ -158,7 +153,7 @@ export const Home: React.FC = () => {
         </div>
 
         {/* Languages */}
-        <div className="bg-white p-8 rounded-2xl border border-orange-100/30 shadow-sm space-y-4">
+        <div className="bg-white p-8 rounded-2xl border border-brand-100/30 shadow-sm space-y-4">
           <h3 className="font-serif text-lg font-bold text-stone-900">Browse by Language</h3>
           <div className="flex flex-wrap gap-2.5">
             {languages.map((lang) => (

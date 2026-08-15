@@ -11,7 +11,7 @@ import Home from './pages/Home';
 import Library from './pages/Library';
 import BookDetails from './pages/BookDetails';
 import PDFReader from './pages/PDFReader';
-import About from './pages/About';
+import Donate from './pages/Donate';
 import AdminLogin from './pages/AdminLogin';
 import AdminDashboard from './pages/AdminDashboard';
 import AdminBooks from './pages/AdminBooks';
@@ -27,7 +27,7 @@ const App: React.FC = () => {
             <Route index element={<Home />} />
             <Route path="library" element={<Library />} />
             <Route path="books/:id" element={<BookDetails />} />
-            <Route path="about" element={<About />} />
+            <Route path="donate" element={<Donate />} />
           </Route>
 
           {/* Distraction-Free PDF Reader (No standard headers/footers) */}

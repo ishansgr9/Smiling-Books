@@ -47,7 +47,7 @@ export const AdminLogin: React.FC = () => {
 
   return (
     <div className="min-h-[70vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8 bg-white border border-orange-100 rounded-3xl p-8 sm:p-10 shadow-sm">
+      <div className="max-w-md w-full space-y-8 bg-white border border-brand-100 rounded-3xl p-8 sm:p-10 shadow-sm">
         
         {/* Header & Logo */}
         <div className="text-center space-y-3">
