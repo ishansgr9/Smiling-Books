@@ -26,7 +26,7 @@ export const AdminBooks: React.FC = () => {
       setTotalBooks(data.total || 0);
     } catch (e: any) {
       console.error('Failed to load admin books listing:', e);
-      setError(e.message || 'Could not retrieve catalog list.');
+      setError(e.message || 'Could not retrieve catalog list.Please confirm again');
     } finally {
       setLoading(false);
     }
@@ -82,7 +82,7 @@ export const AdminBooks: React.FC = () => {
 
   return (
     <div className="space-y-8">
-      
+
       {/* Title Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
@@ -117,7 +117,7 @@ export const AdminBooks: React.FC = () => {
 
       {/* Main Table Panel */}
       <div className="bg-white rounded-2xl border border-stone-200/50 shadow-sm overflow-hidden">
-        
+
         {loading && books.length === 0 ? (
           <div className="py-20 flex flex-col items-center justify-center space-y-2 text-stone-500">
             <Loader2 className="animate-spin text-brand-500" size={24} />
@@ -146,7 +146,7 @@ export const AdminBooks: React.FC = () => {
               <tbody className="divide-y divide-stone-100 font-sans">
                 {books.map((book) => (
                   <tr key={book.id} className="hover:bg-stone-50/50 transition-colors">
-                    
+
                     {/* Cover & Title */}
                     <td className="px-6 py-4">
                       <div className="flex items-center space-x-3 max-w-sm">
@@ -175,13 +175,12 @@ export const AdminBooks: React.FC = () => {
 
                     {/* Rights status */}
                     <td className="px-6 py-4">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                        book.rights_status === 'PUBLIC_DOMAIN' 
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${book.rights_status === 'PUBLIC_DOMAIN'
                           ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
                           : book.rights_status === 'PENDING_REVIEW'
-                          ? 'bg-amber-50 text-amber-700 border-amber-100'
-                          : 'bg-blue-50 text-blue-700 border-blue-100'
-                      }`}>
+                            ? 'bg-amber-50 text-amber-700 border-amber-100'
+                            : 'bg-blue-50 text-blue-700 border-blue-100'
+                        }`}>
                         {getRightsLabel(book.rights_status)}
                       </span>
                     </td>
@@ -191,11 +190,10 @@ export const AdminBooks: React.FC = () => {
                       <button
                         onClick={() => handlePublishToggle(book)}
                         disabled={book.rights_status === 'PENDING_REVIEW'}
-                        className={`inline-flex items-center justify-center p-1 rounded-full transition-all ${
-                          book.published 
-                            ? 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100' 
+                        className={`inline-flex items-center justify-center p-1 rounded-full transition-all ${book.published
+                            ? 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100'
                             : 'text-stone-400 bg-stone-50 hover:bg-stone-200'
-                        } disabled:opacity-50 disabled:cursor-not-allowed`}
+                          } disabled:opacity-50 disabled:cursor-not-allowed`}
                         title={book.rights_status === 'PENDING_REVIEW' ? 'Pending review books cannot be published' : 'Toggle publish status'}
                       >
                         {book.published ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
@@ -204,9 +202,8 @@ export const AdminBooks: React.FC = () => {
 
                     {/* PDF File uploaded indicator */}
                     <td className="px-6 py-4 text-center">
-                      <span className={`inline-block w-2.5 h-2.5 rounded-full ${
-                        book.pdf_object_key ? 'bg-emerald-500' : 'bg-red-400 animate-pulse'
-                      }`} title={book.pdf_object_key ? 'PDF Uploaded' : 'PDF Missing'} />
+                      <span className={`inline-block w-2.5 h-2.5 rounded-full ${book.pdf_object_key ? 'bg-emerald-500' : 'bg-red-400 animate-pulse'
+                        }`} title={book.pdf_object_key ? 'PDF Uploaded' : 'PDF Missing'} />
                     </td>
 
                     {/* Actions */}
@@ -260,7 +257,7 @@ export const AdminBooks: React.FC = () => {
                 </p>
               </div>
             </div>
-            
+
             <div className="flex justify-end gap-3.5 pt-2 font-sans">
               <button
                 onClick={() => setConfirmDeleteId(null)}
