@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -62,14 +63,14 @@ func LoadConfig() *Config {
 
 	return &Config{
 		Port:              port,
-		DatabaseURL:       dbURL,
-		JWTSecret:         jwtSecret,
-		FrontendURL:       frontendURL,
-		R2AccountID:       os.Getenv("R2_ACCOUNT_ID"),
-		R2AccessKeyID:     os.Getenv("R2_ACCESS_KEY_ID"),
-		R2SecretAccessKey: os.Getenv("R2_SECRET_ACCESS_KEY"),
-		R2BucketName:      os.Getenv("R2_BUCKET_NAME"),
-		R2Endpoint:        os.Getenv("R2_ENDPOINT"),
+		DatabaseURL:       strings.TrimSpace(dbURL),
+		JWTSecret:         strings.TrimSpace(jwtSecret),
+		FrontendURL:       strings.TrimSpace(frontendURL),
+		R2AccountID:       strings.TrimSpace(os.Getenv("R2_ACCOUNT_ID")),
+		R2AccessKeyID:     strings.TrimSpace(os.Getenv("R2_ACCESS_KEY_ID")),
+		R2SecretAccessKey: strings.TrimSpace(os.Getenv("R2_SECRET_ACCESS_KEY")),
+		R2BucketName:      strings.TrimSpace(os.Getenv("R2_BUCKET_NAME")),
+		R2Endpoint:        strings.TrimSpace(os.Getenv("R2_ENDPOINT")),
 		UseLocalStorage:   useLocal,
 		LocalStorageDir:   localStorageDir,
 	}
