@@ -32,21 +32,26 @@ const PDFPage: React.FC<PDFPageProps> = ({ pageNum, pdfDoc, scale, onVisible }) 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const renderTaskRef = useRef<any>(null);
-  const [rendered, setRendered] = useState(false);
+  const [isVisible, setIsVisible] = useState(false);
+
+  const onVisibleRef = useRef(onVisible);
+  useEffect(() => {
+    onVisibleRef.current = onVisible;
+  }, [onVisible]);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
-            onVisible(pageNum);
-            if (!rendered) {
-              renderPage();
-            }
+            setIsVisible(true);
+            onVisibleRef.current(pageNum);
+          } else {
+            setIsVisible(false);
           }
         });
       },
-      { threshold: 0.15 }
+      { threshold: 0.05 } // Trigger as soon as 5% of page is visible
     );
 
     if (containerRef.current) {
@@ -55,52 +60,69 @@ const PDFPage: React.FC<PDFPageProps> = ({ pageNum, pdfDoc, scale, onVisible }) 
 
     return () => {
       observer.disconnect();
-      if (renderTaskRef.current) {
-        renderTaskRef.current.cancel();
-      }
     };
-  }, [pdfDoc, scale, rendered]);
+  }, [pageNum]);
 
   useEffect(() => {
-    if (rendered) {
-      renderPage();
-    }
-  }, [scale]);
+    let active = true;
 
-  const renderPage = async () => {
-    if (!pdfDoc || !canvasRef.current) return;
+    const render = async () => {
+      if (!isVisible || !pdfDoc || !canvasRef.current) return;
 
-    if (renderTaskRef.current) {
-      renderTaskRef.current.cancel();
-    }
-
-    try {
-      const page = await pdfDoc.getPage(pageNum);
-      const canvas = canvasRef.current;
-      const context = canvas.getContext('2d');
-
-      if (!context) return;
-
-      const viewport = page.getViewport({ scale });
-      canvas.height = viewport.height;
-      canvas.width = viewport.width;
-
-      const renderContext = {
-        canvasContext: context,
-        viewport: viewport,
-      };
-
-      const renderTask = page.render(renderContext);
-      renderTaskRef.current = renderTask;
-      await renderTask.promise;
-      setRendered(true);
-      renderTaskRef.current = null;
-    } catch (err: any) {
-      if (err.name !== 'RenderingCancelledException') {
-        console.error(`Error rendering page ${pageNum}:`, err);
+      // Cancel any ongoing rendering task
+      if (renderTaskRef.current) {
+        try {
+          renderTaskRef.current.cancel();
+        } catch (e) {
+          // ignore
+        }
       }
-    }
-  };
+
+      try {
+        const page = await pdfDoc.getPage(pageNum);
+        if (!active || !canvasRef.current) return;
+
+        const canvas = canvasRef.current;
+        const context = canvas.getContext('2d');
+
+        if (!context) return;
+
+        const viewport = page.getViewport({ scale });
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+
+        const renderContext = {
+          canvasContext: context,
+          viewport: viewport,
+        };
+
+        const renderTask = page.render(renderContext);
+        renderTaskRef.current = renderTask;
+        await renderTask.promise;
+        
+        if (active) {
+          renderTaskRef.current = null;
+        }
+      } catch (err: any) {
+        if (err.name !== 'RenderingCancelledException') {
+          console.error(`Error rendering page ${pageNum}:`, err);
+        }
+      }
+    };
+
+    render();
+
+    return () => {
+      active = false;
+      if (renderTaskRef.current) {
+        try {
+          renderTaskRef.current.cancel();
+        } catch (e) {
+          // ignore
+        }
+      }
+    };
+  }, [isVisible, pdfDoc, scale, pageNum]);
 
   return (
     <div 
