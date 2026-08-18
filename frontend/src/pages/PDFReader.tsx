@@ -21,6 +21,99 @@ const loadScript = (src: string): Promise<void> => {
   });
 };
 
+interface PDFPageProps {
+  pageNum: number;
+  pdfDoc: any;
+  scale: number;
+  onVisible: (pageNum: number) => void;
+}
+
+const PDFPage: React.FC<PDFPageProps> = ({ pageNum, pdfDoc, scale, onVisible }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const renderTaskRef = useRef<any>(null);
+  const [rendered, setRendered] = useState(false);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            onVisible(pageNum);
+            if (!rendered) {
+              renderPage();
+            }
+          }
+        });
+      },
+      { threshold: 0.15 }
+    );
+
+    if (containerRef.current) {
+      observer.observe(containerRef.current);
+    }
+
+    return () => {
+      observer.disconnect();
+      if (renderTaskRef.current) {
+        renderTaskRef.current.cancel();
+      }
+    };
+  }, [pdfDoc, scale, rendered]);
+
+  useEffect(() => {
+    if (rendered) {
+      renderPage();
+    }
+  }, [scale]);
+
+  const renderPage = async () => {
+    if (!pdfDoc || !canvasRef.current) return;
+
+    if (renderTaskRef.current) {
+      renderTaskRef.current.cancel();
+    }
+
+    try {
+      const page = await pdfDoc.getPage(pageNum);
+      const canvas = canvasRef.current;
+      const context = canvas.getContext('2d');
+
+      if (!context) return;
+
+      const viewport = page.getViewport({ scale });
+      canvas.height = viewport.height;
+      canvas.width = viewport.width;
+
+      const renderContext = {
+        canvasContext: context,
+        viewport: viewport,
+      };
+
+      const renderTask = page.render(renderContext);
+      renderTaskRef.current = renderTask;
+      await renderTask.promise;
+      setRendered(true);
+      renderTaskRef.current = null;
+    } catch (err: any) {
+      if (err.name !== 'RenderingCancelledException') {
+        console.error(`Error rendering page ${pageNum}:`, err);
+      }
+    }
+  };
+
+  return (
+    <div 
+      ref={containerRef}
+      className="mb-8 shadow-2xl border border-stone-800 bg-white select-none pointer-events-none flex justify-center"
+      data-page={pageNum}
+      style={{ minHeight: `${scale * 800}px` }}
+    >
+      <canvas ref={canvasRef} className="max-w-full block" />
+    </div>
+  );
+};
+
 export const PDFReader: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -35,12 +128,10 @@ export const PDFReader: React.FC = () => {
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [totalPages, setTotalPages] = useState<number>(0);
   const [scale, setScale] = useState<number>(1.2);
-  const [rendering, setRendering] = useState<boolean>(false);
   const [pageInput, setPageInput] = useState<string>('1');
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const renderTaskRef = useRef<any>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Block keyboard shortcuts (Ctrl+P, Cmd+P, Ctrl+S, Cmd+S)
   useEffect(() => {
@@ -96,51 +187,17 @@ export const PDFReader: React.FC = () => {
     initializePDF();
   }, [id]);
 
-  // Render the current page on canvas
-  const renderPage = async (pageNumber: number, currentScale: number) => {
-    if (!pdfDoc || !canvasRef.current) return;
-
-    // Cancel active rendering if any
-    if (renderTaskRef.current) {
-      renderTaskRef.current.cancel();
-    }
-
-    setRendering(true);
-    try {
-      const page = await pdfDoc.getPage(pageNumber);
-      const canvas = canvasRef.current;
-      const context = canvas.getContext('2d');
-
-      if (!context) return;
-
-      const viewport = page.getViewport({ scale: currentScale });
-      canvas.height = viewport.height;
-      canvas.width = viewport.width;
-
-      const renderContext = {
-        canvasContext: context,
-        viewport: viewport,
-      };
-
-      const renderTask = page.render(renderContext);
-      renderTaskRef.current = renderTask;
-      await renderTask.promise;
-      renderTaskRef.current = null;
-    } catch (err: any) {
-      if (err.name !== 'RenderingCancelledException') {
-        console.error('Error rendering page:', err);
-      }
-    } finally {
-      setRendering(false);
-    }
+  const handlePageVisible = (pageNum: number) => {
+    setCurrentPage(pageNum);
+    setPageInput(pageNum.toString());
   };
 
-  // Re-render whenever page or scale changes
-  useEffect(() => {
-    if (pdfDoc) {
-      renderPage(currentPage, scale);
+  const scrollToPage = (pageNum: number) => {
+    const pageEl = scrollContainerRef.current?.querySelector(`[data-page="${pageNum}"]`);
+    if (pageEl) {
+      pageEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-  }, [pdfDoc, currentPage, scale]);
+  };
 
   // Navigation handlers
   const handlePrevPage = () => {
@@ -148,6 +205,7 @@ export const PDFReader: React.FC = () => {
       const prev = currentPage - 1;
       setCurrentPage(prev);
       setPageInput(prev.toString());
+      scrollToPage(prev);
     }
   };
 
@@ -156,6 +214,7 @@ export const PDFReader: React.FC = () => {
       const next = currentPage + 1;
       setCurrentPage(next);
       setPageInput(next.toString());
+      scrollToPage(next);
     }
   };
 
@@ -168,6 +227,7 @@ export const PDFReader: React.FC = () => {
     const pageNum = parseInt(pageInput, 10);
     if (!isNaN(pageNum) && pageNum >= 1 && pageNum <= totalPages) {
       setCurrentPage(pageNum);
+      scrollToPage(pageNum);
     } else {
       setPageInput(currentPage.toString());
     }
@@ -183,11 +243,7 @@ export const PDFReader: React.FC = () => {
   };
 
   const handleFitWidth = () => {
-    if (!canvasRef.current || !containerRef.current) return;
-    const containerWidth = containerRef.current.clientWidth - 48;
-    const canvasWidth = canvasRef.current.width / scale;
-    const newScale = containerWidth / canvasWidth;
-    setScale(parseFloat(newScale.toFixed(2)));
+    setScale(1.2);
   };
 
   // Fullscreen sync
@@ -269,7 +325,7 @@ export const PDFReader: React.FC = () => {
       <div 
         ref={containerRef}
         className="bg-stone-950 flex flex-col w-screen h-screen overflow-hidden select-none"
-        onContextMenu={(e) => e.preventDefault()} // Disable right-click globally inside reading room
+        onContextMenu={(e) => e.preventDefault()}
       >
         {/* Header bar controls */}
         <header className="bg-stone-900 text-stone-200 px-6 py-4 flex items-center justify-between border-b border-stone-800 select-none">
@@ -343,9 +399,9 @@ export const PDFReader: React.FC = () => {
               <button
                 onClick={handleFitWidth}
                 className="p-1.5 hover:bg-stone-700 hover:text-white rounded border-l border-stone-700/50 cursor-pointer"
-                title="Fit Width"
+                title="Reset Zoom"
               >
-                Fit Width
+                Reset Zoom
               </button>
             </div>
 
@@ -361,20 +417,20 @@ export const PDFReader: React.FC = () => {
 
         </header>
 
-        {/* PDF Canvas Container */}
-        <div className="flex-grow bg-stone-900 overflow-auto flex items-start justify-center p-6 relative">
-          {rendering && (
-            <div className="absolute inset-0 bg-stone-900/40 flex items-center justify-center pointer-events-none z-10">
-              <Loader2 className="animate-spin text-brand-500" size={32} />
-            </div>
-          )}
-          
-          <div className="shadow-2xl border border-stone-800 bg-white select-none pointer-events-none">
-            <canvas 
-              ref={canvasRef} 
-              className="max-w-full block"
+        {/* Scrollable PDF Canvas Pages List Container */}
+        <div 
+          ref={scrollContainerRef}
+          className="flex-grow bg-stone-900 overflow-y-auto flex flex-col items-center p-6 relative scroll-smooth"
+        >
+          {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+            <PDFPage
+              key={pageNum}
+              pageNum={pageNum}
+              pdfDoc={pdfDoc}
+              scale={scale}
+              onVisible={handlePageVisible}
             />
-          </div>
+          ))}
         </div>
 
       </div>
