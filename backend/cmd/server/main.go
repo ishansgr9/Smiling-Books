@@ -120,7 +120,10 @@ func main() {
 		// Calculate full storage path
 		wd, _ := os.Getwd()
 		log.Printf("Working directory: %s", wd)
-		backendURL := "http://localhost:" + cfg.Port
+		backendURL := os.Getenv("BACKEND_URL")
+		if backendURL == "" {
+			backendURL = "http://localhost:" + cfg.Port
+		}
 		store, err = storage.NewLocalStorage(cfg.LocalStorageDir, backendURL)
 	} else {
 		log.Println("Configured storage mode: CLOUDFLARE R2")

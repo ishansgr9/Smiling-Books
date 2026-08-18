@@ -40,9 +40,48 @@ func Logger(next http.Handler) http.Handler {
 }
 
 func CORS(frontendURL string) func(http.Handler) http.Handler {
+	var allowedOrigins []string
+	if frontendURL != "" {
+		for _, url := range strings.Split(frontendURL, ",") {
+			allowedOrigins = append(allowedOrigins, strings.TrimSpace(url))
+		}
+	}
+	// Always allow localhost for development
+	allowedOrigins = append(allowedOrigins, "http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173")
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Access-Control-Allow-Origin", frontendURL)
+			origin := r.Header.Get("Origin")
+			isAllowed := false
+
+			if origin != "" {
+				// 1. Check exact matches
+				for _, allowed := range allowedOrigins {
+					if origin == allowed {
+						isAllowed = true
+						break
+					}
+				}
+
+				// 2. Check suffix/wildcard matches for Vercel preview domains, Render domain, and local hosts
+				if !isAllowed {
+					if strings.HasSuffix(origin, ".vercel.app") ||
+						strings.HasSuffix(origin, ".onrender.com") ||
+						strings.HasPrefix(origin, "http://localhost:") ||
+						strings.HasPrefix(origin, "http://127.0.0.1:") {
+						isAllowed = true
+					}
+				}
+
+				if isAllowed {
+					w.Header().Set("Access-Control-Allow-Origin", origin)
+				}
+			}
+
+			if !isAllowed && len(allowedOrigins) > 0 {
+				w.Header().Set("Access-Control-Allow-Origin", allowedOrigins[0])
+			}
+
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
