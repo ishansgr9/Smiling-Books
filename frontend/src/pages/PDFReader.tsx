@@ -26,9 +26,10 @@ interface PDFPageProps {
   pdfDoc: any;
   scale: number;
   onVisible: (pageNum: number) => void;
+  scrollContainerRef: React.RefObject<HTMLDivElement | null>;
 }
 
-const PDFPage: React.FC<PDFPageProps> = ({ pageNum, pdfDoc, scale, onVisible }) => {
+const PDFPage: React.FC<PDFPageProps> = ({ pageNum, pdfDoc, scale, onVisible, scrollContainerRef }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const renderTaskRef = useRef<any>(null);
@@ -51,7 +52,10 @@ const PDFPage: React.FC<PDFPageProps> = ({ pageNum, pdfDoc, scale, onVisible }) 
           }
         });
       },
-      { threshold: 0.05 } // Trigger as soon as 5% of page is visible
+      { 
+        root: scrollContainerRef.current, // Set the scroll container as the viewport boundary
+        threshold: 0.05 
+      }
     );
 
     if (containerRef.current) {
@@ -61,7 +65,7 @@ const PDFPage: React.FC<PDFPageProps> = ({ pageNum, pdfDoc, scale, onVisible }) 
     return () => {
       observer.disconnect();
     };
-  }, [pageNum]);
+  }, [pageNum, scrollContainerRef]);
 
   useEffect(() => {
     let active = true;
@@ -185,7 +189,12 @@ export const PDFReader: React.FC = () => {
         // 2. Load PDF.js scripts from CDN
         await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
         const pdfjsLib = (window as any).pdfjsLib;
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        
+        // Fetch worker as blob to bypass cross-origin worker restriction (CORS)
+        const workerResponse = await fetch('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js');
+        const workerBlob = await workerResponse.blob();
+        const workerUrl = URL.createObjectURL(workerBlob);
+        pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
         // 3. Load PDF Document via streaming proxy endpoint
         const pdfURL = `${API_BASE_URL}/api/books/${id}/pdf`;
@@ -451,6 +460,7 @@ export const PDFReader: React.FC = () => {
               pdfDoc={pdfDoc}
               scale={scale}
               onVisible={handlePageVisible}
+              scrollContainerRef={scrollContainerRef}
             />
           ))}
         </div>
