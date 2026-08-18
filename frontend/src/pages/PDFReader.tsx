@@ -148,6 +148,34 @@ export const PDFReader: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [debugLogs, setDebugLogs] = useState<string[]>([]);
+
+  // Intercept and store console.error, error, and promise rejection events
+  useEffect(() => {
+    const handleError = (e: ErrorEvent) => {
+      setDebugLogs((prev) => [...prev, `[Error] ${e.message} (${e.filename}:${e.lineno})`]);
+    };
+    const handleRejection = (e: PromiseRejectionEvent) => {
+      setDebugLogs((prev) => [...prev, `[Rejection] ${e.reason}`]);
+    };
+    
+    const originalConsoleError = console.error;
+    console.error = (...args: any[]) => {
+      setDebugLogs((prev) => [
+        ...prev, 
+        `[Console Error] ${args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')}`
+      ]);
+      originalConsoleError.apply(console, args);
+    };
+
+    window.addEventListener('error', handleError);
+    window.addEventListener('unhandledrejection', handleRejection);
+    return () => {
+      window.removeEventListener('error', handleError);
+      window.removeEventListener('unhandledrejection', handleRejection);
+      console.error = originalConsoleError;
+    };
+  }, []);
 
   // PDF.js State
   const [pdfDoc, setPdfDoc] = useState<any>(null);
@@ -190,17 +218,29 @@ export const PDFReader: React.FC = () => {
         await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
         const pdfjsLib = (window as any).pdfjsLib;
         
-        // Fetch worker as blob to bypass cross-origin worker restriction (CORS)
-        const workerResponse = await fetch('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js');
-        const workerBlob = await workerResponse.blob();
-        const workerUrl = URL.createObjectURL(workerBlob);
-        pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+        try {
+          // Fetch worker as blob to bypass cross-origin worker restriction (CORS)
+          const workerResponse = await fetch('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js');
+          const workerBlob = await workerResponse.blob();
+          const workerUrl = URL.createObjectURL(workerBlob);
+          pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+        } catch (workerErr) {
+          console.error("Failed to load worker via Blob URL, falling back to CDN url", workerErr);
+          pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
 
-        // 3. Load PDF Document via streaming proxy endpoint
+        // 3. Fetch PDF binary data directly in memory (CORS-proof)
         const pdfURL = `${API_BASE_URL}/api/books/${id}/pdf`;
+        const pdfResponse = await fetch(pdfURL);
+        if (!pdfResponse.ok) {
+          throw new Error(`Failed to download book: Server returned status ${pdfResponse.status}`);
+        }
+        const arrayBuffer = await pdfResponse.arrayBuffer();
+        const uint8Array = new Uint8Array(arrayBuffer);
+
+        // 4. Load the Uint8Array document bytes directly in PDF.js
         const loadingTask = pdfjsLib.getDocument({
-          url: pdfURL,
-          withCredentials: true
+          data: uint8Array
         });
         const doc = await loadingTask.promise;
         setPdfDoc(doc);
@@ -464,6 +504,24 @@ export const PDFReader: React.FC = () => {
             />
           ))}
         </div>
+
+        {/* Debug Logs Panel for troubleshooting live issues */}
+        {debugLogs.length > 0 && (
+          <div className="fixed bottom-0 left-0 right-0 bg-red-950/95 text-red-200 p-4 max-h-40 overflow-y-auto text-xs font-mono z-50 border-t border-red-800 pointer-events-auto">
+            <div className="flex justify-between items-center mb-1 pb-1 border-b border-red-900">
+              <h4 className="font-bold text-red-400">Secure Reader Debug Logs (Active):</h4>
+              <button 
+                onClick={() => setDebugLogs([])} 
+                className="px-2 py-0.5 bg-red-900 hover:bg-red-800 rounded text-[10px] text-white"
+              >
+                Clear Logs
+              </button>
+            </div>
+            {debugLogs.map((log, idx) => (
+              <div key={idx} className="py-0.5 border-b border-red-950/30 whitespace-pre-wrap">{log}</div>
+            ))}
+          </div>
+        )}
 
       </div>
     </>
