@@ -56,14 +56,30 @@ func NewR2Storage(accountID, accessKeyID, secretAccessKey, bucketName, endpoint 
 	}, nil
 }
 
+func getMIMEType(key string) string {
+	ext := filepath.Ext(key)
+	switch ext {
+	case ".pdf":
+		return "application/pdf"
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".webp":
+		return "image/webp"
+	default:
+		return "application/octet-stream"
+	}
+}
+
 func (r *R2Storage) UploadFile(ctx context.Context, key string, body io.Reader) error {
-	// We read body into a temporary file or buffer to support S3 SDK upload if needed,
-	// or we can stream directly if size is known. Since s3.PutObject needs a Seeker or we can pass reader,
-	// using s3.PutObject with body is supported in Go v2 SDK.
+	contentType := getMIMEType(key)
 	_, err := r.S3Client.PutObject(ctx, &s3.PutObjectInput{
-		Bucket: aws.String(r.BucketName),
-		Key:    aws.String(key),
-		Body:   body,
+		Bucket:             aws.String(r.BucketName),
+		Key:                aws.String(key),
+		Body:               body,
+		ContentType:        aws.String(contentType),
+		ContentDisposition: aws.String("inline"),
 	})
 	if err != nil {
 		return fmt.Errorf("R2 upload error for key %s: %v", key, err)
@@ -83,9 +99,12 @@ func (r *R2Storage) DeleteFile(ctx context.Context, key string) error {
 }
 
 func (r *R2Storage) GetSignedURL(ctx context.Context, key string, expiration time.Duration) (string, error) {
+	contentType := getMIMEType(key)
 	req, err := r.PresignClient.PresignGetObject(ctx, &s3.GetObjectInput{
-		Bucket: aws.String(r.BucketName),
-		Key:    aws.String(key),
+		Bucket:                     aws.String(r.BucketName),
+		Key:                        aws.String(key),
+		ResponseContentType:        aws.String(contentType),
+		ResponseContentDisposition: aws.String("inline"),
 	}, s3.WithPresignExpires(expiration))
 	if err != nil {
 		return "", fmt.Errorf("failed to generate presigned URL for %s: %v", key, err)

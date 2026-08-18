@@ -161,7 +161,7 @@ export const PDFReader: React.FC = () => {
       {/* Embedded PDF Iframe Viewer */}
       <div className="flex-grow bg-stone-900 relative">
         <iframe
-          src={`${pdfURL}#toolbar=0&navpanes=0&scrollbar=0`}
+          src={pdfURL}
           title={`PDF Reader for ${book.title}`}
           className="w-full h-full border-none"
           loading="eager"
