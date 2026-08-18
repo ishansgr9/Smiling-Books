@@ -5,7 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -40,6 +42,7 @@ func RegisterRoutes(mux *http.ServeMux, h *Handler, jwtSecret string) {
 	mux.HandleFunc("GET /api/books", h.ListBooks)
 	mux.HandleFunc("GET /api/books/{id}", h.GetBook)
 	mux.HandleFunc("GET /api/books/{id}/read", h.ReadBook)
+	mux.HandleFunc("GET /api/books/{id}/pdf", h.StreamPDF)
 	mux.HandleFunc("GET /api/categories", h.ListCategories)
 	mux.HandleFunc("GET /api/languages", h.ListLanguages)
 	mux.HandleFunc("GET /api/authors", h.ListAuthors)
@@ -626,4 +629,58 @@ func (h *Handler) GetAnalytics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, http.StatusOK, analytics)
+}
+
+func (h *Handler) StreamPDF(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	book, err := h.repo.GetBookByID(r.Context(), id)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
+		return
+	}
+	if book == nil || !book.Published {
+		respondError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "Book not found or unavailable")
+		return
+	}
+
+	if book.PDFObjectKey == nil || *book.PDFObjectKey == "" {
+		respondError(w, http.StatusNotFound, "PDF_NOT_UPLOADED", "PDF has not been uploaded for this book yet")
+		return
+	}
+
+	// 1. If using local storage, serve file directly from disk
+	if h.storageDir != "" {
+		path := filepath.Join(h.storageDir, *book.PDFObjectKey)
+		if _, err := os.Stat(path); err == nil {
+			w.Header().Set("Content-Type", "application/pdf")
+			w.Header().Set("Content-Disposition", "inline")
+			http.ServeFile(w, r, path)
+			return
+		}
+	}
+
+	// 2. If using Cloudflare R2, generate a signed URL and proxy the file streaming
+	signedURL, err := h.store.GetSignedURL(r.Context(), *book.PDFObjectKey, 5*time.Minute)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "STORAGE_ERROR", err.Error())
+		return
+	}
+
+	resp, err := http.Get(signedURL)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "STREAM_ERROR", err.Error())
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respondError(w, http.StatusInternalServerError, "STREAM_ERROR", "Failed to retrieve PDF from storage server")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", "inline")
+	w.Header().Set("Cache-Control", "private, max-age=3600")
+
+	_, _ = io.Copy(w, resp.Body)
 }

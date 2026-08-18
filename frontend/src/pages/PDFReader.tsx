@@ -2,48 +2,197 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import type { Book } from '../types';
-import { ArrowLeft, Maximize2, Minimize2, Loader2, AlertCircle, Eye } from 'lucide-react';
+import { ArrowLeft, Maximize2, Minimize2, Loader2, AlertCircle, ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from 'lucide-react';
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+
+// Helper to load external scripts dynamically
+const loadScript = (src: string): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) {
+      resolve();
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = src;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error(`Failed to load script ${src}`));
+    document.head.appendChild(script);
+  });
+};
 
 export const PDFReader: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
   const [book, setBook] = useState<Book | null>(null);
-  const [pdfURL, setPdfURL] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  const containerRef = useRef<HTMLDivElement>(null);
+  // PDF.js State
+  const [pdfDoc, setPdfDoc] = useState<any>(null);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [totalPages, setTotalPages] = useState<number>(0);
+  const [scale, setScale] = useState<number>(1.2);
+  const [rendering, setRendering] = useState<boolean>(false);
+  const [pageInput, setPageInput] = useState<string>('1');
 
+  const containerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const renderTaskRef = useRef<any>(null);
+
+  // Block keyboard shortcuts (Ctrl+P, Cmd+P, Ctrl+S, Cmd+S)
   useEffect(() => {
-    const loadPDF = async () => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P')) {
+        e.preventDefault();
+        alert("Printing is disabled in the Reading Room to protect copyright.");
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        alert("Downloading the book is disabled in the Reading Room.");
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Load PDF.js and the PDF Document
+  useEffect(() => {
+    const initializePDF = async () => {
       if (!id) return;
       setLoading(true);
       setError(null);
       try {
-        // Fetch book info first
+        // 1. Fetch book metadata
         const bookInfo = await api.get<Book>(`/api/books/${id}`);
         setBook(bookInfo);
 
-        // Fetch pre-signed/local file reading URL
-        const data = await api.get<{ url: string }>(`/api/books/${id}/read`);
-        setPdfURL(data.url);
+        // 2. Load PDF.js scripts from CDN
+        await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+        const pdfjsLib = (window as any).pdfjsLib;
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        // 3. Load PDF Document via streaming proxy endpoint
+        const pdfURL = `${API_BASE_URL}/api/books/${id}/pdf`;
+        const loadingTask = pdfjsLib.getDocument({
+          url: pdfURL,
+          withCredentials: true
+        });
+        const doc = await loadingTask.promise;
+        setPdfDoc(doc);
+        setTotalPages(doc.numPages);
+        setCurrentPage(1);
+        setPageInput('1');
       } catch (e: any) {
-        console.error('Failed to load PDF reader:', e);
-        setError(e.message || 'The PDF document could not be fetched or loaded.');
+        console.error('Failed to initialize PDF reader:', e);
+        setError(e.message || 'The digital book document could not be loaded.');
       } finally {
         setLoading(false);
       }
     };
 
-    loadPDF();
+    initializePDF();
   }, [id]);
 
-  // Handle Fullscreen toggle
+  // Render the current page on canvas
+  const renderPage = async (pageNumber: number, currentScale: number) => {
+    if (!pdfDoc || !canvasRef.current) return;
+
+    // Cancel active rendering if any
+    if (renderTaskRef.current) {
+      renderTaskRef.current.cancel();
+    }
+
+    setRendering(true);
+    try {
+      const page = await pdfDoc.getPage(pageNumber);
+      const canvas = canvasRef.current;
+      const context = canvas.getContext('2d');
+
+      if (!context) return;
+
+      const viewport = page.getViewport({ scale: currentScale });
+      canvas.height = viewport.height;
+      canvas.width = viewport.width;
+
+      const renderContext = {
+        canvasContext: context,
+        viewport: viewport,
+      };
+
+      const renderTask = page.render(renderContext);
+      renderTaskRef.current = renderTask;
+      await renderTask.promise;
+      renderTaskRef.current = null;
+    } catch (err: any) {
+      if (err.name !== 'RenderingCancelledException') {
+        console.error('Error rendering page:', err);
+      }
+    } finally {
+      setRendering(false);
+    }
+  };
+
+  // Re-render whenever page or scale changes
+  useEffect(() => {
+    if (pdfDoc) {
+      renderPage(currentPage, scale);
+    }
+  }, [pdfDoc, currentPage, scale]);
+
+  // Navigation handlers
+  const handlePrevPage = () => {
+    if (currentPage > 1) {
+      const prev = currentPage - 1;
+      setCurrentPage(prev);
+      setPageInput(prev.toString());
+    }
+  };
+
+  const handleNextPage = () => {
+    if (pdfDoc && currentPage < totalPages) {
+      const next = currentPage + 1;
+      setCurrentPage(next);
+      setPageInput(next.toString());
+    }
+  };
+
+  const handlePageInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setPageInput(e.target.value);
+  };
+
+  const handlePageInputSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const pageNum = parseInt(pageInput, 10);
+    if (!isNaN(pageNum) && pageNum >= 1 && pageNum <= totalPages) {
+      setCurrentPage(pageNum);
+    } else {
+      setPageInput(currentPage.toString());
+    }
+  };
+
+  // Zoom handlers
+  const handleZoomIn = () => {
+    setScale((prev) => Math.min(prev + 0.2, 3.0));
+  };
+
+  const handleZoomOut = () => {
+    setScale((prev) => Math.max(prev - 0.2, 0.6));
+  };
+
+  const handleFitWidth = () => {
+    if (!canvasRef.current || !containerRef.current) return;
+    const containerWidth = containerRef.current.clientWidth - 48;
+    const canvasWidth = canvasRef.current.width / scale;
+    const newScale = containerWidth / canvasWidth;
+    setScale(parseFloat(newScale.toFixed(2)));
+  };
+
+  // Fullscreen sync
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
-
     if (!document.fullscreenElement) {
       containerRef.current.requestFullscreen().then(() => {
         setIsFullscreen(true);
@@ -57,20 +206,15 @@ export const PDFReader: React.FC = () => {
     }
   };
 
-  // Sync fullscreen state if changed via escape key
   useEffect(() => {
     const handleFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement);
     };
-
     document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange);
-    };
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
   const handleBack = () => {
-    // If fullscreen is active, exit first
     if (document.fullscreenElement) {
       document.exitFullscreen().finally(() => {
         navigate(`/books/${id}`);
@@ -84,23 +228,23 @@ export const PDFReader: React.FC = () => {
     return (
       <div className="h-[70vh] flex flex-col items-center justify-center space-y-4">
         <Loader2 className="animate-spin text-brand-500" size={36} />
-        <p className="text-sm font-medium text-stone-500">Preparing reading room...</p>
+        <p className="text-sm font-medium text-stone-500">Preparing secure reading room...</p>
       </div>
     );
   }
 
-  if (error || !book || !pdfURL) {
+  if (error || !book || !pdfDoc) {
     return (
       <div className="h-[75vh] flex items-center justify-center p-4">
         <div className="text-center max-w-md space-y-4 bg-white border border-brand-100 rounded-3xl p-8 shadow-sm">
           <AlertCircle size={44} className="mx-auto text-red-500 stroke-[1.2]" />
-          <h2 className="font-serif text-xl font-bold text-stone-800">Reading Room Error</h2>
+          <h2 className="font-serif text-xl font-bold text-stone-800">Secure Reader Error</h2>
           <p className="text-sm text-stone-500 leading-relaxed">
-            {error || 'Unable to load the book text. Please verify the file exists.'}
+            {error || 'Unable to load the book text safely. Please verify the file exists.'}
           </p>
           <button
             onClick={handleBack}
-            className="px-5 py-2.5 bg-stone-900 text-white text-xs font-semibold rounded-full hover:bg-stone-800 transition-all flex items-center justify-center space-x-1.5 mx-auto"
+            className="px-5 py-2.5 bg-stone-900 text-white text-xs font-semibold rounded-full hover:bg-stone-800 flex items-center justify-center space-x-1.5 mx-auto"
             type="button"
           >
             <ArrowLeft size={14} />
@@ -112,61 +256,129 @@ export const PDFReader: React.FC = () => {
   }
 
   return (
-    <div 
-      ref={containerRef}
-      className="bg-stone-950 flex flex-col w-screen h-screen overflow-hidden"
-    >
-      {/* Header bar controls */}
-      <header className="bg-stone-900 text-stone-200 px-6 py-4 flex items-center justify-between border-b border-stone-800 select-none">
-        
-        {/* Left Side: Back & title */}
-        <div className="flex items-center space-x-4 min-w-0 pr-4">
-          <button
-            onClick={handleBack}
-            className="p-1.5 bg-stone-800 hover:bg-stone-700 text-stone-200 rounded-lg transition-all"
-            aria-label="Back to details"
-          >
-            <ArrowLeft size={16} />
-          </button>
-          <div className="min-w-0">
-            <h1 className="font-serif text-sm font-bold text-white leading-tight truncate">
-              {book.title}
-            </h1>
-            <p className="text-[10px] text-stone-400 font-medium truncate mt-0.5">
-              By {book.author_name} • Reading Online
-            </p>
+    <>
+      {/* CSS Block to completely disable browser prints */}
+      <style>{`
+        @media print {
+          body {
+            display: none !important;
+          }
+        }
+      `}</style>
+
+      <div 
+        ref={containerRef}
+        className="bg-stone-950 flex flex-col w-screen h-screen overflow-hidden select-none"
+        onContextMenu={(e) => e.preventDefault()} // Disable right-click globally inside reading room
+      >
+        {/* Header bar controls */}
+        <header className="bg-stone-900 text-stone-200 px-6 py-4 flex items-center justify-between border-b border-stone-800 select-none">
+          
+          {/* Left Side: Back & title */}
+          <div className="flex items-center space-x-4 min-w-0 pr-4">
+            <button
+              onClick={handleBack}
+              className="p-1.5 bg-stone-800 hover:bg-stone-700 text-stone-200 rounded-lg transition-all"
+              aria-label="Back to details"
+            >
+              <ArrowLeft size={16} />
+            </button>
+            <div className="min-w-0">
+              <h1 className="font-serif text-sm font-bold text-white leading-tight truncate">
+                {book.title}
+              </h1>
+              <p className="text-[10px] text-stone-400 font-medium truncate mt-0.5">
+                By {book.author_name} • Secure Reading Room
+              </p>
+            </div>
+          </div>
+
+          {/* Center: Page Controls */}
+          <div className="flex items-center space-x-4 bg-stone-950 px-4 py-1.5 rounded-full border border-stone-800">
+            <button
+              onClick={handlePrevPage}
+              disabled={currentPage <= 1}
+              className="p-1 text-stone-400 hover:text-white disabled:opacity-30 disabled:hover:text-stone-400 transition-colors cursor-pointer"
+            >
+              <ChevronLeft size={18} />
+            </button>
+            
+            <form onSubmit={handlePageInputSubmit} className="flex items-center space-x-1.5">
+              <input
+                type="text"
+                value={pageInput}
+                onChange={handlePageInputChange}
+                className="w-10 bg-stone-800 border border-stone-700 rounded text-center text-xs font-semibold text-white py-0.5 focus:border-brand-500 focus:outline-none"
+              />
+              <span className="text-xs text-stone-400">/ {totalPages}</span>
+            </form>
+
+            <button
+              onClick={handleNextPage}
+              disabled={currentPage >= totalPages}
+              className="p-1 text-stone-400 hover:text-white disabled:opacity-30 disabled:hover:text-stone-400 transition-colors cursor-pointer"
+            >
+              <ChevronRight size={18} />
+            </button>
+          </div>
+
+          {/* Right Side: Zoom & Fullscreen */}
+          <div className="flex items-center space-x-3">
+            <div className="flex items-center bg-stone-800 rounded-lg border border-stone-700/50 p-0.5 text-xs text-stone-300">
+              <button
+                onClick={handleZoomOut}
+                className="p-1.5 hover:bg-stone-700 hover:text-white rounded cursor-pointer"
+                title="Zoom Out"
+              >
+                <ZoomOut size={14} />
+              </button>
+              <span className="px-2 font-mono text-[10px]">{Math.round(scale * 100)}%</span>
+              <button
+                onClick={handleZoomIn}
+                className="p-1.5 hover:bg-stone-700 hover:text-white rounded cursor-pointer"
+                title="Zoom In"
+              >
+                <ZoomIn size={14} />
+              </button>
+              <button
+                onClick={handleFitWidth}
+                className="p-1.5 hover:bg-stone-700 hover:text-white rounded border-l border-stone-700/50 cursor-pointer"
+                title="Fit Width"
+              >
+                Fit Width
+              </button>
+            </div>
+
+            <button
+              onClick={toggleFullscreen}
+              className="p-2 bg-stone-800 hover:bg-stone-700 text-stone-200 rounded-lg transition-all cursor-pointer"
+              aria-label="Toggle Fullscreen"
+              title="Toggle Fullscreen"
+            >
+              {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+            </button>
+          </div>
+
+        </header>
+
+        {/* PDF Canvas Container */}
+        <div className="flex-grow bg-stone-900 overflow-auto flex items-start justify-center p-6 relative">
+          {rendering && (
+            <div className="absolute inset-0 bg-stone-900/40 flex items-center justify-center pointer-events-none z-10">
+              <Loader2 className="animate-spin text-brand-500" size={32} />
+            </div>
+          )}
+          
+          <div className="shadow-2xl border border-stone-800 bg-white select-none pointer-events-none">
+            <canvas 
+              ref={canvasRef} 
+              className="max-w-full block"
+            />
           </div>
         </div>
 
-        {/* Right Side: Options & Fullscreen */}
-        <div className="flex items-center space-x-3">
-          <span className="hidden sm:flex items-center space-x-1.5 px-3 py-1 bg-stone-800 border border-stone-700/50 rounded-full text-[10px] font-semibold text-brand-300 uppercase tracking-wider">
-            <Eye size={12} />
-            <span>Read-Only Room</span>
-          </span>
-          <button
-            onClick={toggleFullscreen}
-            className="p-2 bg-stone-800 hover:bg-stone-700 text-stone-200 rounded-lg transition-all"
-            aria-label="Toggle Fullscreen"
-            title="Toggle Fullscreen"
-          >
-            {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-          </button>
-        </div>
-
-      </header>
-
-      {/* Embedded PDF Iframe Viewer */}
-      <div className="flex-grow bg-stone-900 relative">
-        <iframe
-          src={pdfURL}
-          title={`PDF Reader for ${book.title}`}
-          className="w-full h-full border-none"
-          loading="eager"
-        />
       </div>
-
-    </div>
+    </>
   );
 };
 export default PDFReader;
