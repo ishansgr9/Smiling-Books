@@ -114,9 +114,7 @@ export const PDFReader: React.FC = () => {
   return (
     <div 
       ref={containerRef}
-      className={`bg-stone-950 flex flex-col rounded-3xl overflow-hidden shadow-lg border border-brand-950/20 ${
-        isFullscreen ? 'w-screen h-screen rounded-none' : 'w-full h-[82vh]'
-      }`}
+      className="bg-stone-950 flex flex-col w-screen h-screen overflow-hidden"
     >
       {/* Header bar controls */}
       <header className="bg-stone-900 text-stone-200 px-6 py-4 flex items-center justify-between border-b border-stone-800 select-none">
