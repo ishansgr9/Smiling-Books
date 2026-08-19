@@ -20,6 +20,84 @@ import { Document, Page, pdfjs } from 'react-pdf';
 // Configure the pdf.js worker using standard CDN
 pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
+// Lazy rendering wrapper for each PDF page to avoid canvas memory limits in browsers
+const LazyPDFPage: React.FC<{
+  pageNumber: number;
+  scale: number;
+  onVisible: (pageNum: number) => void;
+}> = ({ pageNumber, scale, onVisible }) => {
+  const [isVisible, setIsVisible] = useState(false);
+  const elementRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            setIsVisible(true);
+            onVisible(pageNumber);
+          } else {
+            // Unmount canvas when out of view to release GPU/Canvas memory
+            setIsVisible(false);
+          }
+        });
+      },
+      {
+        root: null, // relative to browser viewport
+        rootMargin: '600px 0px', // preload 600px before/after scroll for smooth reading
+        threshold: 0.1,
+      }
+    );
+
+    if (elementRef.current) {
+      observer.observe(elementRef.current);
+    }
+
+    return () => {
+      if (elementRef.current) {
+        observer.unobserve(elementRef.current);
+      }
+    };
+  }, [pageNumber, onVisible]);
+
+  // Approximate heights based on standard A4 aspect ratio (~1.41)
+  const width = scale * 600;
+  const height = scale * 840;
+
+  return (
+    <div
+      ref={elementRef}
+      id={`pdf-page-${pageNumber}`}
+      className="shadow-2xl border border-stone-850 rounded bg-stone-900 overflow-hidden flex-shrink-0 flex items-center justify-center relative transition-all duration-200"
+      style={{
+        width: `${width}px`,
+        height: `${height}px`,
+        maxWidth: '100%',
+      }}
+    >
+      {isVisible ? (
+        <Page
+          key={`page_${pageNumber}_${scale}`}
+          pageNumber={pageNumber}
+          scale={scale}
+          renderTextLayer={false}
+          renderAnnotationLayer={false}
+          loading={
+            <div className="flex items-center justify-center w-full h-full bg-stone-900">
+              <Loader2 className="animate-spin text-stone-500" size={28} />
+            </div>
+          }
+        />
+      ) : (
+        <div className="flex flex-col items-center justify-center space-y-2 text-stone-600 select-none">
+          <Loader2 className="animate-spin text-stone-700" size={24} />
+          <span className="text-[10px] font-semibold">Loading Page {pageNumber}...</span>
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const PDFReader: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -141,29 +219,10 @@ export const PDFReader: React.FC = () => {
     };
   }, [numPages]);
 
-  // Scroll handler to track the currently visible page
-  const handleScroll = () => {
-    if (isProgrammaticScrollRef.current || !numPages || !scrollContainerRef.current) return;
-    
-    const container = scrollContainerRef.current;
-    const children = container.querySelectorAll('[id^="pdf-page-"]');
-    let activePage = pageNumber;
-    let minDiff = Infinity;
-
-    children.forEach((child) => {
-      const rect = child.getBoundingClientRect();
-      const containerRect = container.getBoundingClientRect();
-      // Measure distance from top of page element to top of scroll container
-      const diff = Math.abs(rect.top - containerRect.top);
-      if (diff < minDiff) {
-        minDiff = diff;
-        const pageId = child.id.replace('pdf-page-', '');
-        activePage = parseInt(pageId, 10) || 1;
-      }
-    });
-
-    if (activePage !== pageNumber) {
-      setPageNumber(activePage);
+  // Handler passed to lazy pages to sync indicator on manual scrolls
+  const handlePageVisible = (pageNum: number) => {
+    if (!isProgrammaticScrollRef.current && pageNum !== pageNumber) {
+      setPageNumber(pageNum);
     }
   };
 
@@ -354,10 +413,9 @@ export const PDFReader: React.FC = () => {
 
       </header>
 
-      {/* Canvas PDF Viewer Container */}
+      {/* Scrollable PDF Viewer Container */}
       <div 
         ref={scrollContainerRef}
-        onScroll={handleScroll}
         className="flex-grow bg-stone-950 overflow-auto flex items-start justify-center p-6 relative"
       >
         <Document
@@ -388,24 +446,12 @@ export const PDFReader: React.FC = () => {
           {numPages && (
             <div className="flex flex-col space-y-8 pb-32 max-w-full">
               {Array.from(new Array(numPages), (_, index) => (
-                <div
+                <LazyPDFPage
                   key={`page_${index + 1}`}
-                  id={`pdf-page-${index + 1}`}
-                  className="shadow-2xl border border-stone-850 rounded bg-stone-900 overflow-hidden flex-shrink-0"
-                >
-                  <Page
-                    key={`page_${index + 1}_${scale}`}
-                    pageNumber={index + 1}
-                    scale={scale}
-                    renderTextLayer={false}
-                    renderAnnotationLayer={false}
-                    loading={
-                      <div className="flex items-center justify-center py-40 min-w-[320px] bg-stone-900">
-                        <Loader2 className="animate-spin text-stone-500" size={28} />
-                      </div>
-                    }
-                  />
-                </div>
+                  pageNumber={index + 1}
+                  scale={scale}
+                  onVisible={handlePageVisible}
+                />
               ))}
             </div>
           )}
