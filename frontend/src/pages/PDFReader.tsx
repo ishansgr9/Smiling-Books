@@ -17,11 +17,8 @@ import {
 } from 'lucide-react';
 import { Document, Page, pdfjs } from 'react-pdf';
 
-// Configure the pdf.js worker using Vite asset resolution
-pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.min.mjs',
-  import.meta.url
-).toString();
+// Configure the pdf.js worker using standard CDN
+pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 export const PDFReader: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -32,6 +29,9 @@ export const PDFReader: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // PDF error state for diagnostics
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // PDF reading states
   const [numPages, setNumPages] = useState<number | null>(null);
@@ -152,10 +152,16 @@ export const PDFReader: React.FC = () => {
     }
   };
 
-  // Document load callback
+  // Document load callbacks
   const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
     setNumPages(numPages);
     setPageNumber(1);
+    setLoadError(null);
+  };
+
+  const onDocumentLoadError = (err: any) => {
+    console.error('Failed to load PDF document:', err);
+    setLoadError(err.message || String(err));
   };
 
   // Page navigation handlers
@@ -294,6 +300,7 @@ export const PDFReader: React.FC = () => {
         <Document
           file={pdfURL}
           onLoadSuccess={onDocumentLoadSuccess}
+          onLoadError={onDocumentLoadError}
           loading={
             <div className="flex flex-col items-center justify-center space-y-4 py-32">
               <Loader2 className="animate-spin text-stone-500" size={36} />
@@ -301,9 +308,17 @@ export const PDFReader: React.FC = () => {
             </div>
           }
           error={
-            <div className="flex flex-col items-center justify-center space-y-4 py-32 text-center max-w-sm px-4">
+            <div className="flex flex-col items-center justify-center space-y-4 py-32 text-center max-w-md px-4">
               <AlertCircle size={40} className="text-red-500 stroke-[1.2]" />
               <p className="text-sm font-medium text-stone-400">Failed to render book pages. Please reload or check the document format.</p>
+              {loadError && (
+                <div className="mt-2 text-left w-full">
+                  <p className="text-[10px] text-stone-500 font-bold uppercase tracking-wider mb-1">Error Diagnostics:</p>
+                  <p className="text-[11px] text-red-400 bg-stone-900 border border-stone-800 px-3 py-2 rounded-lg font-mono break-all max-h-32 overflow-y-auto">
+                    {loadError}
+                  </p>
+                </div>
+              )}
             </div>
           }
         >
