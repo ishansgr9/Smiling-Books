@@ -17,8 +17,12 @@ import {
 } from 'lucide-react';
 import { Document, Page, pdfjs } from 'react-pdf';
 
-// Configure the pdf.js worker using standard CDN
-pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+// Import local worker via Vite URL query to avoid external CDN requests and CSP blocks
+// @ts-ignore
+import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+
+// Configure the pdf.js worker using the same-origin bundled asset path
+pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 // Lazy rendering wrapper for each PDF page to avoid canvas memory limits in browsers
 const LazyPDFPage: React.FC<{
@@ -27,6 +31,7 @@ const LazyPDFPage: React.FC<{
   onVisible: (pageNum: number) => void;
 }> = ({ pageNumber, scale, onVisible }) => {
   const [isVisible, setIsVisible] = useState(false);
+  const [renderError, setRenderError] = useState<string | null>(null);
   const elementRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -39,6 +44,7 @@ const LazyPDFPage: React.FC<{
           } else {
             // Unmount canvas when out of view to release GPU/Canvas memory
             setIsVisible(false);
+            setRenderError(null);
           }
         });
       },
@@ -76,18 +82,38 @@ const LazyPDFPage: React.FC<{
       }}
     >
       {isVisible ? (
-        <Page
-          key={`page_${pageNumber}_${scale}`}
-          pageNumber={pageNumber}
-          scale={scale}
-          renderTextLayer={false}
-          renderAnnotationLayer={false}
-          loading={
-            <div className="flex items-center justify-center w-full h-full bg-stone-900">
-              <Loader2 className="animate-spin text-stone-500" size={28} />
+        <>
+          {renderError ? (
+            <div className="flex flex-col items-center justify-center p-4 text-center space-y-2 text-red-400 select-none">
+              <AlertCircle size={22} className="stroke-[1.5]" />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400">Page Render Error</span>
+              <p className="text-[11px] font-mono bg-stone-950 px-3 py-1.5 rounded border border-stone-800 break-all max-w-[280px]">
+                {renderError}
+              </p>
             </div>
-          }
-        />
+          ) : (
+            <Page
+              key={`page_${pageNumber}_${scale}`}
+              pageNumber={pageNumber}
+              scale={scale}
+              renderTextLayer={false}
+              renderAnnotationLayer={false}
+              onRenderError={(err: any) => {
+                console.error(`Page ${pageNumber} render error:`, err);
+                setRenderError(err.message || String(err));
+              }}
+              onLoadError={(err: any) => {
+                console.error(`Page ${pageNumber} load error:`, err);
+                setRenderError(err.message || String(err));
+              }}
+              loading={
+                <div className="flex items-center justify-center w-full h-full bg-stone-900">
+                  <Loader2 className="animate-spin text-stone-500" size={28} />
+                </div>
+              }
+            />
+          )}
+        </>
       ) : (
         <div className="flex flex-col items-center justify-center space-y-2 text-stone-600 select-none">
           <Loader2 className="animate-spin text-stone-700" size={24} />
@@ -111,6 +137,10 @@ export const PDFReader: React.FC = () => {
   // PDF error state for diagnostics
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  // In-browser Developer Logs overlay for production debugging
+  const [consoleLogs, setConsoleLogs] = useState<string[]>([]);
+  const [showConsole, setShowConsole] = useState(false);
+
   // PDF reading states
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState<number>(1);
@@ -120,6 +150,39 @@ export const PDFReader: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isProgrammaticScrollRef = useRef<boolean>(false);
+
+  // Intercept console errors/warnings and render on screen to debug production
+  useEffect(() => {
+    const handleLog = (type: 'ERROR' | 'WARN', ...args: any[]) => {
+      const msg = args.map(arg => {
+        if (arg instanceof Error) return arg.stack || arg.message;
+        if (typeof arg === 'object') {
+          try { return JSON.stringify(arg); } catch { return String(arg); }
+        }
+        return String(arg);
+      }).join(' ');
+
+      setConsoleLogs(prev => [...prev.slice(-49), `[${type} ${new Date().toLocaleTimeString()}] ${msg}`]);
+    };
+
+    const originalError = console.error;
+    const originalWarn = console.warn;
+
+    console.error = (...args) => {
+      handleLog('ERROR', ...args);
+      originalError.apply(console, args);
+    };
+
+    console.warn = (...args) => {
+      handleLog('WARN', ...args);
+      originalWarn.apply(console, args);
+    };
+
+    return () => {
+      console.error = originalError;
+      console.warn = originalWarn;
+    };
+  }, []);
 
   useEffect(() => {
     const loadPDF = async () => {
@@ -340,7 +403,7 @@ export const PDFReader: React.FC = () => {
     <div
       ref={containerRef}
       onContextMenu={(e) => e.preventDefault()}
-      className="bg-stone-950 flex flex-col w-screen h-screen overflow-hidden select-none"
+      className="bg-stone-950 flex flex-col w-screen h-screen overflow-hidden select-none relative"
     >
       {/* Header bar controls */}
       <header className="bg-stone-900 text-stone-200 px-6 py-4 flex items-center justify-between border-b border-stone-800 select-none z-10 shadow-md">
@@ -499,6 +562,42 @@ export const PDFReader: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Floating diagnostics toggle button */}
+      <div className="fixed bottom-4 right-4 z-50">
+        <button
+          onClick={() => setShowConsole(prev => !prev)}
+          className="bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold px-3.5 py-2 rounded-full shadow-2xl border border-amber-500 flex items-center space-x-1 cursor-pointer select-none transition-all active:scale-95"
+        >
+          <span>Logs Console ({consoleLogs.length})</span>
+        </button>
+      </div>
+
+      {/* Diagnostics Console Panel */}
+      {showConsole && (
+        <div className="fixed bottom-16 right-4 left-4 md:left-auto md:w-96 max-h-72 bg-stone-900/95 backdrop-blur-md border border-stone-800 rounded-xl shadow-2xl z-50 p-4 flex flex-col select-text">
+          <div className="flex items-center justify-between border-b border-stone-855 pb-2 mb-2">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400">In-Browser Logs Console</span>
+            <button 
+              onClick={() => setConsoleLogs([])}
+              className="text-[10px] text-stone-500 hover:text-white transition-all cursor-pointer font-semibold"
+            >
+              Clear Logs
+            </button>
+          </div>
+          <div className="flex-grow overflow-auto font-mono text-[9px] text-stone-300 space-y-1.5 bg-stone-950 p-2.5 rounded border border-stone-850 h-48 select-text">
+            {consoleLogs.length === 0 ? (
+              <span className="text-stone-600 italic">No console errors/warnings intercepted yet...</span>
+            ) : (
+              consoleLogs.map((log, i) => (
+                <div key={i} className="whitespace-pre-wrap break-all border-b border-stone-900/30 pb-1 text-amber-400 last:border-0">
+                  {log}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
 
     </div>
   );
