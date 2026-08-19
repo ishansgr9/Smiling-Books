@@ -40,6 +40,8 @@ export const PDFReader: React.FC = () => {
   const [scale, setScale] = useState<number>(1.0);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const isProgrammaticScrollRef = useRef<boolean>(false);
 
   useEffect(() => {
     const loadPDF = async () => {
@@ -73,6 +75,21 @@ export const PDFReader: React.FC = () => {
     setInputPage(String(pageNumber));
   }, [pageNumber]);
 
+  // Programmatic scroll helper
+  const scrollToPage = (pageNum: number) => {
+    if (!numPages || pageNum < 1 || pageNum > numPages) return;
+    const el = document.getElementById(`pdf-page-${pageNum}`);
+    if (el) {
+      isProgrammaticScrollRef.current = true;
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      
+      // Reset the programmatic scroll flag after smooth scroll completes
+      setTimeout(() => {
+        isProgrammaticScrollRef.current = false;
+      }, 800);
+    }
+  };
+
   // Keyboard shortcut overrides & navigation handlers
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -104,9 +121,17 @@ export const PDFReader: React.FC = () => {
 
       // Page Navigation Shortcuts (ArrowRight/ArrowLeft)
       if (e.key === 'ArrowRight') {
-        setPageNumber(prev => (numPages ? Math.min(prev + 1, numPages) : prev));
+        setPageNumber(prev => {
+          const next = numPages ? Math.min(prev + 1, numPages) : prev;
+          scrollToPage(next);
+          return next;
+        });
       } else if (e.key === 'ArrowLeft') {
-        setPageNumber(prev => Math.max(prev - 1, 1));
+        setPageNumber(prev => {
+          const next = Math.max(prev - 1, 1);
+          scrollToPage(next);
+          return next;
+        });
       }
     };
 
@@ -115,6 +140,32 @@ export const PDFReader: React.FC = () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [numPages]);
+
+  // Scroll handler to track the currently visible page
+  const handleScroll = () => {
+    if (isProgrammaticScrollRef.current || !numPages || !scrollContainerRef.current) return;
+    
+    const container = scrollContainerRef.current;
+    const children = container.querySelectorAll('[id^="pdf-page-"]');
+    let activePage = pageNumber;
+    let minDiff = Infinity;
+
+    children.forEach((child) => {
+      const rect = child.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      // Measure distance from top of page element to top of scroll container
+      const diff = Math.abs(rect.top - containerRect.top);
+      if (diff < minDiff) {
+        minDiff = diff;
+        const pageId = child.id.replace('pdf-page-', '');
+        activePage = parseInt(pageId, 10) || 1;
+      }
+    });
+
+    if (activePage !== pageNumber) {
+      setPageNumber(activePage);
+    }
+  };
 
   // Handle Fullscreen toggle
   const toggleFullscreen = () => {
@@ -169,17 +220,22 @@ export const PDFReader: React.FC = () => {
 
   // Page navigation handlers
   const handlePrevPage = () => {
-    setPageNumber(prev => Math.max(prev - 1, 1));
+    const next = Math.max(pageNumber - 1, 1);
+    setPageNumber(next);
+    scrollToPage(next);
   };
 
   const handleNextPage = () => {
-    setPageNumber(prev => (numPages ? Math.min(prev + 1, numPages) : prev));
+    const next = numPages ? Math.min(pageNumber + 1, numPages) : pageNumber;
+    setPageNumber(next);
+    scrollToPage(next);
   };
 
   const handlePageJump = () => {
     const parsed = parseInt(inputPage, 10);
     if (!isNaN(parsed) && parsed >= 1 && numPages && parsed <= numPages) {
       setPageNumber(parsed);
+      scrollToPage(parsed);
     } else {
       setInputPage(String(pageNumber));
     }
@@ -299,7 +355,11 @@ export const PDFReader: React.FC = () => {
       </header>
 
       {/* Canvas PDF Viewer Container */}
-      <div className="flex-grow bg-stone-950 overflow-auto flex items-start justify-center p-6 relative">
+      <div 
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className="flex-grow bg-stone-950 overflow-auto flex items-start justify-center p-6 relative"
+      >
         <Document
           file={pdfURL}
           onLoadSuccess={onDocumentLoadSuccess}
@@ -326,25 +386,34 @@ export const PDFReader: React.FC = () => {
           }
         >
           {numPages && (
-            <div className="shadow-2xl border border-stone-800 rounded bg-stone-900 overflow-hidden mb-24">
-              <Page
-                pageNumber={pageNumber}
-                scale={scale}
-                renderTextLayer={false}
-                renderAnnotationLayer={false}
-                loading={
-                  <div className="flex items-center justify-center py-40 min-w-[320px] bg-stone-900">
-                    <Loader2 className="animate-spin text-stone-500" size={28} />
-                  </div>
-                }
-              />
+            <div className="flex flex-col space-y-8 pb-32 max-w-full">
+              {Array.from(new Array(numPages), (_, index) => (
+                <div
+                  key={`page_${index + 1}`}
+                  id={`pdf-page-${index + 1}`}
+                  className="shadow-2xl border border-stone-850 rounded bg-stone-900 overflow-hidden flex-shrink-0"
+                >
+                  <Page
+                    key={`page_${index + 1}_${scale}`}
+                    pageNumber={index + 1}
+                    scale={scale}
+                    renderTextLayer={false}
+                    renderAnnotationLayer={false}
+                    loading={
+                      <div className="flex items-center justify-center py-40 min-w-[320px] bg-stone-900">
+                        <Loader2 className="animate-spin text-stone-500" size={28} />
+                      </div>
+                    }
+                  />
+                </div>
+              ))}
             </div>
           )}
         </Document>
 
         {/* Bottom Floating Navigation Bar */}
         {numPages && (
-          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-stone-900/90 backdrop-blur-md border border-stone-800 px-4 py-2.5 rounded-full flex items-center space-x-4 shadow-xl z-10 text-white select-none">
+          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-stone-900/90 backdrop-blur-md border border-stone-800 px-4 py-2.5 rounded-full flex items-center space-x-4 shadow-xl z-20 text-white select-none">
             <button
               onClick={handlePrevPage}
               disabled={pageNumber <= 1}
