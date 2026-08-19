@@ -51,9 +51,12 @@ export const PDFReader: React.FC = () => {
         const bookInfo = await api.get<Book>(`/api/books/${id}`);
         setBook(bookInfo);
 
-        // Fetch pre-signed/local file reading URL
-        const data = await api.get<{ url: string }>(`/api/books/${id}/read`);
-        setPdfURL(data.url);
+        // Fetch pre-signed/local file reading URL to verify permissions and log reading event
+        await api.get<{ url: string }>(`/api/books/${id}/read`);
+
+        // Use backend stream proxy URL directly to avoid CORS issues on presigned Cloudflare R2 / S3 URLs
+        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+        setPdfURL(`${apiBaseUrl}/api/books/${id}/pdf`);
       } catch (e: any) {
         console.error('Failed to load PDF reader:', e);
         setError(e.message || 'The PDF document could not be fetched or loaded.');
