@@ -142,10 +142,6 @@ export const PDFReader: React.FC = () => {
   // PDF error state for diagnostics
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // In-browser Developer Logs overlay for production debugging
-  const [consoleLogs, setConsoleLogs] = useState<string[]>([]);
-  const [showConsole, setShowConsole] = useState(false);
-
   // PDF reading states
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState<number>(1);
@@ -155,39 +151,6 @@ export const PDFReader: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isProgrammaticScrollRef = useRef<boolean>(false);
-
-  // Intercept console errors/warnings and render on screen to debug production
-  useEffect(() => {
-    const handleLog = (type: 'ERROR' | 'WARN', ...args: any[]) => {
-      const msg = args.map(arg => {
-        if (arg instanceof Error) return arg.stack || arg.message;
-        if (typeof arg === 'object') {
-          try { return JSON.stringify(arg); } catch { return String(arg); }
-        }
-        return String(arg);
-      }).join(' ');
-
-      setConsoleLogs(prev => [...prev.slice(-49), `[${type} ${new Date().toLocaleTimeString()}] ${msg}`]);
-    };
-
-    const originalError = console.error;
-    const originalWarn = console.warn;
-
-    console.error = (...args) => {
-      handleLog('ERROR', ...args);
-      originalError.apply(console, args);
-    };
-
-    console.warn = (...args) => {
-      handleLog('WARN', ...args);
-      originalWarn.apply(console, args);
-    };
-
-    return () => {
-      console.error = originalError;
-      console.warn = originalWarn;
-    };
-  }, []);
 
   useEffect(() => {
     const loadPDF = async () => {
@@ -569,41 +532,6 @@ export const PDFReader: React.FC = () => {
         )}
       </div>
 
-      {/* Floating diagnostics toggle button */}
-      <div className="fixed bottom-4 right-4 z-50">
-        <button
-          onClick={() => setShowConsole(prev => !prev)}
-          className="bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold px-3.5 py-2 rounded-full shadow-2xl border border-amber-500 flex items-center space-x-1 cursor-pointer select-none transition-all active:scale-95"
-        >
-          <span>Logs Console ({consoleLogs.length})</span>
-        </button>
-      </div>
-
-      {/* Diagnostics Console Panel */}
-      {showConsole && (
-        <div className="fixed bottom-16 right-4 left-4 md:left-auto md:w-96 max-h-72 bg-stone-900/95 backdrop-blur-md border border-stone-800 rounded-xl shadow-2xl z-50 p-4 flex flex-col select-text">
-          <div className="flex items-center justify-between border-b border-stone-855 pb-2 mb-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400">In-Browser Logs Console</span>
-            <button 
-              onClick={() => setConsoleLogs([])}
-              className="text-[10px] text-stone-500 hover:text-white transition-all cursor-pointer font-semibold"
-            >
-              Clear Logs
-            </button>
-          </div>
-          <div className="flex-grow overflow-auto font-mono text-[9px] text-stone-300 space-y-1.5 bg-stone-950 p-2.5 rounded border border-stone-850 h-48 select-text">
-            {consoleLogs.length === 0 ? (
-              <span className="text-stone-600 italic">No console errors/warnings intercepted yet...</span>
-            ) : (
-              consoleLogs.map((log, i) => (
-                <div key={i} className="whitespace-pre-wrap break-all border-b border-stone-900/30 pb-1 text-amber-400 last:border-0">
-                  {log}
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
 
     </div>
   );
