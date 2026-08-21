@@ -269,7 +269,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		Expires:  time.Now().Add(24 * time.Hour),
 		HttpOnly: true,
-		Secure:   false, // Set to true in production if TLS is configured
+		Secure:   !strings.HasPrefix(r.Host, "localhost:") && !strings.HasPrefix(r.Host, "127.0.0.1:"),
 		SameSite: http.SameSiteLaxMode,
 	})
 
@@ -291,6 +291,7 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		Expires:  time.Unix(0, 0),
 		HttpOnly: true,
+		Secure:   !strings.HasPrefix(r.Host, "localhost:") && !strings.HasPrefix(r.Host, "127.0.0.1:"),
 		SameSite: http.SameSiteLaxMode,
 	})
 	respondJSON(w, http.StatusOK, "Logged out successfully")
