@@ -24,6 +24,11 @@ import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 // Configure the pdf.js worker using the same-origin bundled asset path
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 
+// Define options containing the JPX (JPEG 2000) WASM decoder CDN path for rendering PDF illustrations
+const pdfOptions = {
+  wasmUrl: `https://unpkg.com/pdfjs-dist@${pdfjs.version}/wasm/`,
+};
+
 // Lazy rendering wrapper for each PDF page to avoid canvas memory limits in browsers
 const LazyPDFPage: React.FC<{
   pageNumber: number;
@@ -483,6 +488,7 @@ export const PDFReader: React.FC = () => {
       >
         <Document
           file={pdfURL}
+          options={pdfOptions}
           onLoadSuccess={onDocumentLoadSuccess}
           onLoadError={onDocumentLoadError}
           loading={
