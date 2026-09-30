@@ -10,18 +10,18 @@ The **Smiling Books Digital Library** is an open-access digital learning platfor
 
 ---
 
-## 📚 Technical Documentation Index (`/docs`)
+## Technical Documentation Index
 
-Comprehensive technical documentation, deployment handover manuals, architecture specifications, and API guides are maintained in the [`docs/`](./docs) folder:
+Comprehensive technical documentation, deployment handover manuals, architecture specifications, and API guides are maintained in the [`docs/`](./docs) directory:
 
-- 🚀 **[Handover & Production Deployment Guide](./docs/HANDOVER_DEPLOYMENT.md)**: Complete step-by-step setup for Vercel, Render, Cloudflare R2, Neon DB PostgreSQL, environment secrets, and initial admin creation.
-- 🏗️ **[System Architecture Specification](./docs/ARCHITECTURE.md)**: Software architecture diagrams, database ERD, data flows, copyright compliance engine, and mobile responsive subsystem.
-- 📡 **[REST API Reference Documentation](./docs/API_REFERENCE.md)**: Full API endpoint specifications, JSON payload schemas, status codes, and JWT authentication headers.
-- 💻 **[Local Development & CLI Guide](./docs/DEVELOPMENT_GUIDE.md)**: Local installation workflow, environment variables, CLI flags (`-migrate`, `-seed`, `-create-admin`), and Vite scripts.
+- **[Handover & Production Deployment Guide](./docs/HANDOVER_DEPLOYMENT.md)**: Complete step-by-step setup for Vercel, Render, Cloudflare R2, Neon DB PostgreSQL, environment secrets, and initial admin creation.
+- **[System Architecture Specification](./docs/ARCHITECTURE.md)**: Software architecture diagrams, database ERD, data flows, copyright compliance engine, and mobile responsive subsystem.
+- **[REST API Reference Documentation](./docs/API_REFERENCE.md)**: Full API endpoint specifications, JSON payload schemas, status codes, and JWT authentication headers.
+- **[Local Development & CLI Guide](./docs/DEVELOPMENT_GUIDE.md)**: Local installation workflow, environment variables, CLI flags (`-migrate`, `-seed`, `-create-admin`), and Vite scripts.
 
 ---
 
-## 🏗️ System Architecture Overview
+## System Architecture Overview
 
 ```mermaid
 graph TD
@@ -34,7 +34,7 @@ graph TD
 
 ---
 
-## 🛠️ Technology Stack
+## Technology Stack
 
 | Layer | Technology | Key Libraries / Frameworks |
 | :--- | :--- | :--- |
@@ -46,7 +46,7 @@ graph TD
 
 ---
 
-## ⚙️ Environment Variables Summary
+## Environment Variables Summary
 
 Environment variable templates are provided at root and subproject levels:
 - Master Template: [`.env.example`](./.env.example)
@@ -75,7 +75,7 @@ VITE_API_BASE_URL=http://localhost:8080
 
 ---
 
-## 🚀 Quick Local Development Setup
+## Local Development Setup
 
 ### 1. Backend API (Go)
 ```bash
@@ -101,7 +101,7 @@ npm run dev
 
 ---
 
-## 🔐 Default Administrator Credentials
+## Default Administrator Credentials
 
 Upon running the seeder (`go run cmd/server/main.go -seed`), the following account is provisioned:
 - **Email**: `admin@smilingbooks.org`
@@ -109,7 +109,7 @@ Upon running the seeder (`go run cmd/server/main.go -seed`), the following accou
 
 ---
 
-## 📄 License & Organization Details
+## Organization & Licensing
 
 - **NGO Organization**: Akshar Paaul NGO, Pune, Maharashtra, India
 - **Program**: Smiling Books Digital Library Project
