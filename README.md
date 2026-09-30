@@ -1,203 +1,116 @@
 # Smiling Books Digital Library
-An initiative of Akshar Paaul NGO
+### An Educational Initiative by Akshar Paaul NGO
 
-This repository contains the complete full-stack codebase for the **Smiling Books Digital Library**, a digital extension of Akshar Paaul NGO's physical library. The platform is designed to allow members of the public to browse, search, and read legally authorized children's books and educational materials online, while providing a secure management console for NGO administrators.
+[![React](https://img.shields.io/badge/Frontend-React_19_%7C_Vite_8_%7C_Tailwind_v4-blue)](https://react.dev/)
+[![Go Backend](https://img.shields.io/badge/Backend-Go_1.22+_REST_API-00ADD8)](https://go.dev/)
+[![Database](https://img.shields.io/badge/Database-NeonDB_PostgreSQL-00e599)](https://neon.tech/)
+[![Storage](https://img.shields.io/badge/Storage-Cloudflare_R2_Object_Storage-f38020)](https://www.cloudflare.com/developer-platform/r2/)
+
+The **Smiling Books Digital Library** is an open-access digital learning platform developed for **Akshar Paaul NGO** (Pune, India). It provides a child-safe, legally compliant repository of storybooks, educational materials, and multi-lingual literature for under-resourced communities.
 
 ---
 
-## Architecture Overview
+## 📚 Technical Documentation Index (`/docs`)
+
+Comprehensive technical documentation, deployment handover manuals, architecture specifications, and API guides are maintained in the [`docs/`](./docs) folder:
+
+- 🚀 **[Handover & Production Deployment Guide](./docs/HANDOVER_DEPLOYMENT.md)**: Complete step-by-step setup for Vercel, Render, Cloudflare R2, Neon DB PostgreSQL, environment secrets, and initial admin creation.
+- 🏗️ **[System Architecture Specification](./docs/ARCHITECTURE.md)**: Software architecture diagrams, database ERD, data flows, copyright compliance engine, and mobile responsive subsystem.
+- 📡 **[REST API Reference Documentation](./docs/API_REFERENCE.md)**: Full API endpoint specifications, JSON payload schemas, status codes, and JWT authentication headers.
+- 💻 **[Local Development & CLI Guide](./docs/DEVELOPMENT_GUIDE.md)**: Local installation workflow, environment variables, CLI flags (`-migrate`, `-seed`, `-create-admin`), and Vite scripts.
+
+---
+
+## 🏗️ System Architecture Overview
 
 ```mermaid
 graph TD
-    Client[React.js Frontend - Vercel / Local] -->|REST API Requests| Backend[Go REST API - Render / Local]
-    Backend -->|JWT Auth / CORS| Middleware[Go Standard Middlewares]
-    Backend -->|Metadata / Log Queries| DB[(Neon DB PostgreSQL)]
-    Backend -->|Presigned URLs / Upload| Storage[Cloudflare R2 / Local Disk]
-    Storage -->|PDFs & Cover Images| Client
-```
-
-- **Frontend**: React.js (Vite + TypeScript + Tailwind CSS v4 + React Router).
-- **Backend**: Go (standard library `net/http` router, pgxpool).
-- **Database**: PostgreSQL (Neon DB).
-- **Object Storage**: Cloudflare R2 (S3-compatible API) with local filesystem fallback for development.
-- **Authentication**: JWT-based stateless authentication for admin routes.
-
----
-
-## Database Design
-
-The database schema is designed for PostgreSQL and includes constraints to enforce copyright business rules.
-
-### Database Tables & Indexes
-
-```sql
--- Users (Administrators)
-CREATE TABLE users (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name VARCHAR(255) NOT NULL,
-    email VARCHAR(255) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    role VARCHAR(50) NOT NULL DEFAULT 'ADMIN',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL
-);
-
--- Authors / Categories / Languages
-CREATE TABLE authors ( id SERIAL PRIMARY KEY, name VARCHAR(255) UNIQUE NOT NULL );
-CREATE TABLE categories ( id SERIAL PRIMARY KEY, name VARCHAR(255) UNIQUE NOT NULL );
-CREATE TABLE languages ( id SERIAL PRIMARY KEY, name VARCHAR(255) UNIQUE NOT NULL );
-
--- Books
-CREATE TABLE books (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    title VARCHAR(255) NOT NULL,
-    author_id INT NOT NULL REFERENCES authors(id) ON DELETE RESTRICT,
-    description TEXT,
-    language_id INT NOT NULL REFERENCES languages(id) ON DELETE RESTRICT,
-    category_id INT NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
-    age_group VARCHAR(50) NOT NULL,
-    publication_year INT,
-    cover_object_key VARCHAR(500),
-    pdf_object_key VARCHAR(500),
-    rights_status VARCHAR(50) NOT NULL DEFAULT 'PENDING_REVIEW',
-    published BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    
-    -- Business Rules: PENDING_REVIEW books CANNOT be published
-    CONSTRAINT chk_rights_published CHECK (
-        NOT (rights_status = 'PENDING_REVIEW' AND published = TRUE)
-    ),
-    CONSTRAINT chk_rights_status CHECK (
-        rights_status IN ('PUBLIC_DOMAIN', 'LICENSED', 'PERMISSION_GRANTED', 'PENDING_REVIEW')
-    )
-);
-
--- Reading Events (Anonymous Analytics)
-CREATE TABLE reading_events (
-    id SERIAL PRIMARY KEY,
-    book_id UUID NOT NULL REFERENCES books(id) ON DELETE CASCADE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    ip_hash VARCHAR(64) NOT NULL
-);
+    Client[React SPA - Vercel / Mobile / Desktop] -->|HTTPS REST Requests| Backend[Go REST API - Render Service]
+    Backend -->|JWT Auth / CORS Middleware| Handlers[HTTP Handlers & Business Rules]
+    Handlers -->|Relational Queries & Reading Logs| NeonDB[(Neon DB PostgreSQL)]
+    Handlers -->|Presigned URLs & Stream Proxy| R2Storage[Cloudflare R2 Object Storage]
+    R2Storage -->|PDF Document & Cover Streams| Client
 ```
 
 ---
 
-## API Documentation
+## 🛠️ Technology Stack
 
-All responses are served in a standard JSON envelope:
-- **Success**: `{"success": true, "data": ...}`
-- **Error**: `{"success": false, "error": {"code": "ERROR_CODE", "message": "Reason"}}`
-
-### Public Endpoints
-- `GET /api/books` - Search & filter catalog (supports: `q`, `category`, `language`, `age_group`, `sort`, `page`, `limit`)
-- `GET /api/books/{id}` - Details of a specific book
-- `GET /api/books/{id}/read` - Returns 1-hour signed URL to read PDF online, logging a reading event
-- `GET /api/categories` - Fetch all category names
-- `GET /api/languages` - Fetch all languages
-- `GET /api/authors` - Fetch all authors list
-
-### Admin Endpoints (Auth Protected via custom JWT Middleware)
-- `POST /api/auth/login` - Logs in admin, returns token & sets cookie
-- `POST /api/auth/logout` - Logs out admin, clears cookie
-- `GET /api/admin/books` - Retrieve all books (includes unpublished)
-- `POST /api/admin/books` - Create new book metadata
-- `GET /api/admin/books/{id}` - Admin details view
-- `PUT /api/admin/books/{id}` - Update book metadata (enforces check constraints)
-- `DELETE /api/admin/books/{id}` - Permanently delete book metadata & R2 files
-- `POST /api/admin/books/{id}/publish` - Publish a book (blocked if rights are pending)
-- `POST /api/admin/books/{id}/unpublish` - Unpublish a book
-- `POST /api/admin/books/{id}/upload-cover` - Upload cover image (validates JPG/PNG/WebP, max 2MB)
-- `POST /api/admin/books/{id}/upload-pdf` - Upload book PDF text document (validates PDF, max 50MB)
-- `GET /api/admin/analytics` - Total metrics, category distribution, popular books
+| Layer | Technology | Key Libraries / Frameworks |
+| :--- | :--- | :--- |
+| **Frontend SPA** | React 19 + TypeScript | Vite 8, Tailwind CSS v4, Lucide React, React PDF (`pdfjs-dist`) |
+| **Backend REST API** | Go (Golang 1.22+) | Standard `net/http` router, `pgxpool`, `golang.org/x/crypto/bcrypt` |
+| **Relational Database** | PostgreSQL | Serverless Neon DB PostgreSQL cluster |
+| **Object Storage** | Cloudflare R2 / Disk | `aws-sdk-go-v2` S3-compatible API (with local disk fallback) |
+| **Authentication** | JWT | Custom Go JWT stateless auth middleware |
 
 ---
 
-## Local Development Instructions
+## ⚙️ Environment Variables Summary
 
-Both frontend and backend are configured to run locally, connecting directly to your remote **Neon DB** instance.
+Environment variable templates are provided at root and subproject levels:
+- Master Template: [`.env.example`](./.env.example)
+- Backend Template: [`backend/.env.example`](./backend/.env.example)
+- Frontend Template: [`frontend/.env.example`](./frontend/.env.example)
 
-### Prerequisites
-- Go 1.22+ installed
-- Node.js 18+ installed
+### Key Variables Matrix
+```ini
+# Backend API (Render / Local)
+PORT=8080
+DATABASE_URL=postgres://username:password@hostname:5432/dbname?sslmode=require
+JWT_SECRET=super_secret_jwt_signing_key_change_this_in_production_32chars!
+FRONTEND_URL=http://localhost:5173
 
-### 1. Database Configuration
-1. Obtain your connection string from your Neon DB console.
-2. In the `backend` folder, copy `.env.example` to `.env` and set the `DATABASE_URL` variable.
+# Storage (Cloudflare R2)
+USE_LOCAL_STORAGE=false
+R2_ACCOUNT_ID=your_cloudflare_account_id
+R2_ACCESS_KEY_ID=your_r2_access_key
+R2_SECRET_ACCESS_KEY=your_r2_secret_key
+R2_BUCKET_NAME=smiling-books-storage
+R2_ENDPOINT=https://your_account_id.r2.cloudflarestorage.com
 
-### 2. Run Backend Server
-The Go backend contains an integrated database migration and seeding utility:
+# Frontend Client (Vercel / Local)
+VITE_API_BASE_URL=http://localhost:8080
+```
+
+---
+
+## 🚀 Quick Local Development Setup
+
+### 1. Backend API (Go)
 ```bash
 cd backend
-
-# Copy configuration
 cp .env.example .env
 
-# Run migrations and seed data (creates default admin & 10 public domain books)
+# Run database schema migrations & seed default records
 go run cmd/server/main.go -migrate -seed
 
-# Start the local development server (runs auto-migration checks automatically)
+# Start the local development server (http://localhost:8080)
 go run cmd/server/main.go
 ```
-The server will start on port `8080` (e.g. `http://localhost:8080`).
 
-### 3. Run Frontend Client
+### 2. Frontend Client (React)
 ```bash
 cd frontend
-
-# Copy configuration
 cp .env.example .env.local
-
-# Install dependencies
 npm install
 
-# Run the client dev server
+# Start Vite dev server (http://localhost:5173 - accessible on local network)
 npm run dev
 ```
-The frontend client will start on port `5173` (e.g. `http://localhost:5173`).
 
 ---
 
-## Initial Admin Accounts & uploads
+## 🔐 Default Administrator Credentials
 
-### First Admin Account
-The database seeder automatically creates a default administrator:
+Upon running the seeder (`go run cmd/server/main.go -seed`), the following account is provisioned:
 - **Email**: `admin@smilingbooks.org`
 - **Password**: `AdminSmilingBooks2026!`
 
-### Adding Your First Book
-1. Log in via `http://localhost:5173/admin/login`.
-2. Navigate to **Manage Books** → **Add New Book**.
-3. Fill in title, author, category, language, and select a **Rights Status**. Click **Create Book**.
-4. In the Edit screen that opens, select a cover image file (< 2MB) and click **Upload Cover**.
-5. Select a PDF document (< 50MB) and click **Upload PDF**.
-6. Set the checkbox to **Publish** (disabled if rights are pending review) and click **Update Metadata** to make it live!
-
 ---
 
-## Deployment Guidelines
+## 📄 License & Organization Details
 
-### 1. Database (PostgreSQL)
-We run migrations automatically during the Render startup script or via Neon DB directly. Connect database using Render or Vercel environment variables.
-
-### 2. Frontend (Vercel)
-- Root directory: `frontend`
-- Build command: `npm run build`
-- Output directory: `dist`
-- Set Env Variable: `VITE_API_BASE_URL` to your Render API deployment URL.
-
-### 3. Backend (Render)
-- Environment: Go
-- Build command: `cd backend && go build -o bin/server cmd/server/main.go`
-- Start command: `cd backend && ./bin/server`
-- Configure Environment variables: `DATABASE_URL`, `JWT_SECRET`, `FRONTEND_URL`, `USE_LOCAL_STORAGE=false`, and Cloudflare R2 credentials (`R2_ACCOUNT_ID`, etc.).
-
----
-
-## Copyright & Compliance Framework
-
-The Smiling Books platform is designed around strict legal constraints:
-1. **Rule 1**: Only upload content that the NGO holds digitizing rights for.
-2. **Rule 2**: Physical ownership of a paper book copy does NOT grant digital distribution rights.
-3. **Rule 3**: Any book set to `PENDING_REVIEW` is blocked from publication server-side.
-4. **Rule 4**: Standard library pre-signed URLs valid for 1 hour prevent file leeching or direct PDF sharing.
+- **NGO Organization**: Akshar Paaul NGO, Pune, Maharashtra, India
+- **Program**: Smiling Books Digital Library Project
+- **Website**: [aksharpaaul.org](https://www.aksharpaaul.org)
