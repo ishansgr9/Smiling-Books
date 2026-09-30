@@ -129,52 +129,32 @@ export const AdminBooks: React.FC = () => {
             <p className="text-stone-400 mt-1">{error}</p>
           </div>
         ) : books.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-stone-100 text-left text-xs text-stone-700">
-              <thead className="bg-stone-50 text-stone-500 font-semibold uppercase tracking-wider">
-                <tr>
-                  <th scope="col" className="px-6 py-4">Book Title</th>
-                  <th scope="col" className="px-6 py-4">Author</th>
-                  <th scope="col" className="px-6 py-4">Category</th>
-                  <th scope="col" className="px-6 py-4">Language</th>
-                  <th scope="col" className="px-6 py-4">Rights Status</th>
-                  <th scope="col" className="px-6 py-4 text-center">Published</th>
-                  <th scope="col" className="px-6 py-4 text-center">Files</th>
-                  <th scope="col" className="px-6 py-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-stone-100 font-sans">
-                {books.map((book) => (
-                  <tr key={book.id} className="hover:bg-stone-50/50 transition-colors">
-
-                    {/* Cover & Title */}
-                    <td className="px-6 py-4">
-                      <div className="flex items-center space-x-3 max-w-sm">
-                        <div className="w-9 h-12 bg-stone-100 rounded overflow-hidden relative shrink-0 border border-stone-200/30 flex items-center justify-center">
-                          {book.cover_url ? (
-                            <img src={book.cover_url} alt="" className="object-cover w-full h-full" />
-                          ) : (
-                            <BookOpen size={14} className="text-stone-300" />
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="font-bold text-stone-900 truncate">{book.title}</p>
-                          <p className="text-[10px] text-stone-400 mt-0.5 truncate">ID: {book.id}</p>
+          <div>
+            {/* Mobile Card List (visible on screens < md) */}
+            <div className="md:hidden divide-y divide-stone-100">
+              {books.map((book) => (
+                <div key={book.id} className="p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center space-x-3 min-w-0">
+                      <div className="w-10 h-14 bg-stone-100 rounded overflow-hidden relative shrink-0 border border-stone-200/40 flex items-center justify-center">
+                        {book.cover_url ? (
+                          <img src={book.cover_url} alt="" className="object-cover w-full h-full" />
+                        ) : (
+                          <BookOpen size={16} className="text-stone-300" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-bold text-stone-900 text-sm truncate">{book.title}</p>
+                        <p className="text-xs text-stone-500 font-medium truncate">By {book.author_name}</p>
+                        <div className="flex items-center space-x-2 mt-1">
+                          <span className="text-[10px] text-stone-400">{book.category_name} • {book.language_name}</span>
                         </div>
                       </div>
-                    </td>
+                    </div>
+                  </div>
 
-                    {/* Author */}
-                    <td className="px-6 py-4 font-medium text-stone-900">{book.author_name}</td>
-
-                    {/* Category */}
-                    <td className="px-6 py-4">{book.category_name}</td>
-
-                    {/* Language */}
-                    <td className="px-6 py-4">{book.language_name}</td>
-
-                    {/* Rights status */}
-                    <td className="px-6 py-4">
+                  <div className="flex items-center justify-between pt-1 border-t border-stone-50 text-xs">
+                    <div className="flex items-center space-x-2">
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${book.rights_status === 'PUBLIC_DOMAIN'
                         ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
                         : book.rights_status === 'PENDING_REVIEW'
@@ -183,54 +163,144 @@ export const AdminBooks: React.FC = () => {
                         }`}>
                         {getRightsLabel(book.rights_status)}
                       </span>
-                    </td>
-
-                    {/* Published status */}
-                    <td className="px-6 py-4 text-center">
                       <button
                         onClick={() => handlePublishToggle(book)}
                         disabled={book.rights_status === 'PENDING_REVIEW'}
-                        className={`inline-flex items-center justify-center p-1 rounded-full transition-all ${book.published
-                          ? 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100'
-                          : 'text-stone-400 bg-stone-50 hover:bg-stone-200'
-                          } disabled:opacity-50 disabled:cursor-not-allowed`}
-                        title={book.rights_status === 'PENDING_REVIEW' ? 'Pending review books cannot be published' : 'Toggle publish status'}
+                        className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition-all ${book.published
+                          ? 'text-emerald-700 bg-emerald-50'
+                          : 'text-stone-500 bg-stone-100'
+                          }`}
                       >
-                        {book.published ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
+                        {book.published ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
+                        <span>{book.published ? 'Published' : 'Draft'}</span>
                       </button>
-                    </td>
+                    </div>
 
-                    {/* PDF File uploaded indicator */}
-                    <td className="px-6 py-4 text-center">
-                      <span className={`inline-block w-2.5 h-2.5 rounded-full ${book.pdf_object_key ? 'bg-emerald-500' : 'bg-red-400 animate-pulse'
-                        }`} title={book.pdf_object_key ? 'PDF Uploaded' : 'PDF Missing'} />
-                    </td>
+                    <div className="flex items-center space-x-2">
+                      <Link
+                        to={`/admin/books/${book.id}/edit`}
+                        className="px-2.5 py-1 bg-stone-100 hover:bg-brand-50 text-stone-700 hover:text-brand-600 rounded-lg text-xs font-semibold flex items-center space-x-1"
+                      >
+                        <Edit2 size={12} />
+                        <span>Edit</span>
+                      </Link>
+                      <button
+                        onClick={() => setConfirmDeleteId(book.id)}
+                        className="p-1.5 bg-stone-100 hover:bg-red-50 text-stone-500 hover:text-red-600 rounded-lg"
+                        type="button"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
 
-                    {/* Actions */}
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end space-x-2">
-                        <Link
-                          to={`/admin/books/${book.id}/edit`}
-                          className="p-1.5 bg-stone-50 text-stone-500 hover:text-brand-600 hover:bg-brand-50 rounded-lg border border-stone-200/40 transition-all"
-                          title="Edit Metadata"
-                        >
-                          <Edit2 size={12} />
-                        </Link>
-                        <button
-                          onClick={() => setConfirmDeleteId(book.id)}
-                          className="p-1.5 bg-stone-50 text-stone-500 hover:text-red-600 hover:bg-red-50 rounded-lg border border-stone-200/40 transition-all"
-                          title="Delete Book"
-                          type="button"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                    </td>
-
+            {/* Desktop Table View (hidden on screens < md) */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="min-w-full divide-y divide-stone-100 text-left text-xs text-stone-700">
+                <thead className="bg-stone-50 text-stone-500 font-semibold uppercase tracking-wider">
+                  <tr>
+                    <th scope="col" className="px-6 py-4">Book Title</th>
+                    <th scope="col" className="px-6 py-4">Author</th>
+                    <th scope="col" className="px-6 py-4">Category</th>
+                    <th scope="col" className="px-6 py-4">Language</th>
+                    <th scope="col" className="px-6 py-4">Rights Status</th>
+                    <th scope="col" className="px-6 py-4 text-center">Published</th>
+                    <th scope="col" className="px-6 py-4 text-center">Files</th>
+                    <th scope="col" className="px-6 py-4 text-right">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-stone-100 font-sans">
+                  {books.map((book) => (
+                    <tr key={book.id} className="hover:bg-stone-50/50 transition-colors">
+
+                      {/* Cover & Title */}
+                      <td className="px-6 py-4">
+                        <div className="flex items-center space-x-3 max-w-sm">
+                          <div className="w-9 h-12 bg-stone-100 rounded overflow-hidden relative shrink-0 border border-stone-200/30 flex items-center justify-center">
+                            {book.cover_url ? (
+                              <img src={book.cover_url} alt="" className="object-cover w-full h-full" />
+                            ) : (
+                              <BookOpen size={14} className="text-stone-300" />
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-bold text-stone-900 truncate">{book.title}</p>
+                            <p className="text-[10px] text-stone-400 mt-0.5 truncate">ID: {book.id}</p>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Author */}
+                      <td className="px-6 py-4 font-medium text-stone-900">{book.author_name}</td>
+
+                      {/* Category */}
+                      <td className="px-6 py-4">{book.category_name}</td>
+
+                      {/* Language */}
+                      <td className="px-6 py-4">{book.language_name}</td>
+
+                      {/* Rights status */}
+                      <td className="px-6 py-4">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${book.rights_status === 'PUBLIC_DOMAIN'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                          : book.rights_status === 'PENDING_REVIEW'
+                            ? 'bg-amber-50 text-amber-700 border-amber-100'
+                            : 'bg-blue-50 text-blue-700 border-blue-100'
+                          }`}>
+                          {getRightsLabel(book.rights_status)}
+                        </span>
+                      </td>
+
+                      {/* Published status */}
+                      <td className="px-6 py-4 text-center">
+                        <button
+                          onClick={() => handlePublishToggle(book)}
+                          disabled={book.rights_status === 'PENDING_REVIEW'}
+                          className={`inline-flex items-center justify-center p-1 rounded-full transition-all ${book.published
+                            ? 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100'
+                            : 'text-stone-400 bg-stone-50 hover:bg-stone-200'
+                            } disabled:opacity-50 disabled:cursor-not-allowed`}
+                          title={book.rights_status === 'PENDING_REVIEW' ? 'Pending review books cannot be published' : 'Toggle publish status'}
+                        >
+                          {book.published ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
+                        </button>
+                      </td>
+
+                      {/* PDF File uploaded indicator */}
+                      <td className="px-6 py-4 text-center">
+                        <span className={`inline-block w-2.5 h-2.5 rounded-full ${book.pdf_object_key ? 'bg-emerald-500' : 'bg-red-400 animate-pulse'
+                          }`} title={book.pdf_object_key ? 'PDF Uploaded' : 'PDF Missing'} />
+                      </td>
+
+                      {/* Actions */}
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex items-center justify-end space-x-2">
+                          <Link
+                            to={`/admin/books/${book.id}/edit`}
+                            className="p-1.5 bg-stone-50 text-stone-500 hover:text-brand-600 hover:bg-brand-50 rounded-lg border border-stone-200/40 transition-all"
+                            title="Edit Metadata"
+                          >
+                            <Edit2 size={12} />
+                          </Link>
+                          <button
+                            onClick={() => setConfirmDeleteId(book.id)}
+                            className="p-1.5 bg-stone-50 text-stone-500 hover:text-red-600 hover:bg-red-50 rounded-lg border border-stone-200/40 transition-all"
+                            title="Delete Book"
+                            type="button"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      </td>
+
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         ) : (
           <div className="text-center py-20 bg-white p-6">

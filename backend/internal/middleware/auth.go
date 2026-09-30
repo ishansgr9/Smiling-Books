@@ -63,12 +63,18 @@ func CORS(frontendURL string) func(http.Handler) http.Handler {
 					}
 				}
 
-				// 2. Check suffix/wildcard matches for Vercel preview domains, Render domain, and local hosts
+				// 2. Check suffix/wildcard matches for Vercel preview domains, Render domain, and local hosts/LAN IPs
 				if !isAllowed {
 					if strings.HasSuffix(origin, ".vercel.app") ||
 						strings.HasSuffix(origin, ".onrender.com") ||
 						strings.HasPrefix(origin, "http://localhost:") ||
-						strings.HasPrefix(origin, "http://127.0.0.1:") {
+						strings.HasPrefix(origin, "http://127.0.0.1:") ||
+						strings.HasPrefix(origin, "http://192.168.") ||
+						strings.HasPrefix(origin, "http://10.") ||
+						strings.HasPrefix(origin, "http://172.") ||
+						strings.HasPrefix(origin, "https://192.168.") ||
+						strings.HasPrefix(origin, "https://10.") ||
+						strings.HasPrefix(origin, "https://172.") {
 						isAllowed = true
 					}
 				}

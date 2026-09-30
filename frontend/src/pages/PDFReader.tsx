@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import api from '../services/api';
+import { api, getApiBaseUrl } from '../services/api';
 import type { Book } from '../types';
 import {
   ArrowLeft,
@@ -13,7 +13,8 @@ import {
   ZoomOut,
   RotateCcw,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Maximize
 } from 'lucide-react';
 import { Document, Page, pdfjs } from 'react-pdf';
 
@@ -29,12 +30,12 @@ const pdfOptions = {
   wasmUrl: `https://unpkg.com/pdfjs-dist@${pdfjs.version}/wasm/`,
 };
 
-// Lazy rendering wrapper for each PDF page to avoid canvas memory limits in browsers
+// Lazy rendering wrapper for each PDF page to maintain document aspect ratio & optimize memory
 const LazyPDFPage: React.FC<{
   pageNumber: number;
-  scale: number;
+  width: number;
   onVisible: (pageNum: number) => void;
-}> = ({ pageNumber, scale, onVisible }) => {
+}> = ({ pageNumber, width, onVisible }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [renderError, setRenderError] = useState<string | null>(null);
   const elementRef = useRef<HTMLDivElement>(null);
@@ -71,26 +72,22 @@ const LazyPDFPage: React.FC<{
     };
   }, [pageNumber, onVisible]);
 
-  // Approximate heights based on standard A4 aspect ratio (~1.41)
-  const width = scale * 600;
-  const height = scale * 840;
-
   return (
     <div
       ref={elementRef}
       id={`pdf-page-${pageNumber}`}
-      className="shadow-2xl border border-stone-850 rounded bg-stone-900 overflow-hidden flex-shrink-0 flex items-center justify-center relative transition-all duration-200"
+      className="shadow-2xl border border-stone-800/80 rounded-lg bg-stone-900 overflow-hidden flex-shrink-0 flex items-center justify-center relative transition-all duration-200 my-3 sm:my-4"
       style={{
         width: `${width}px`,
-        height: `${height}px`,
         maxWidth: '100%',
+        minHeight: `${Math.round(width * 1.25)}px`,
       }}
     >
       {isVisible ? (
         <>
           {renderError ? (
-            <div className="flex flex-col items-center justify-center p-4 text-center space-y-2 text-red-400 select-none">
-              <AlertCircle size={22} className="stroke-[1.5]" />
+            <div className="flex flex-col items-center justify-center p-4 text-center space-y-2 text-red-400 select-none min-h-[300px]">
+              <AlertCircle size={24} className="stroke-[1.5]" />
               <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400">Page Render Error</span>
               <p className="text-[11px] font-mono bg-stone-950 px-3 py-1.5 rounded border border-stone-800 break-all max-w-[280px]">
                 {renderError}
@@ -98,9 +95,9 @@ const LazyPDFPage: React.FC<{
             </div>
           ) : (
             <Page
-              key={`page_${pageNumber}_${scale}`}
+              key={`page_${pageNumber}_${Math.round(width)}`}
               pageNumber={pageNumber}
-              scale={scale}
+              width={width}
               renderTextLayer={false}
               renderAnnotationLayer={false}
               onRenderError={(err: any) => {
@@ -112,17 +109,18 @@ const LazyPDFPage: React.FC<{
                 setRenderError(err.message || String(err));
               }}
               loading={
-                <div className="flex items-center justify-center w-full h-full bg-stone-900">
-                  <Loader2 className="animate-spin text-stone-500" size={28} />
+                <div className="flex flex-col items-center justify-center w-full h-full bg-stone-900 min-h-[350px] space-y-2">
+                  <Loader2 className="animate-spin text-brand-500" size={28} />
+                  <span className="text-[10px] text-stone-500 font-medium">Rendering Page {pageNumber}...</span>
                 </div>
               }
             />
           )}
         </>
       ) : (
-        <div className="flex flex-col items-center justify-center space-y-2 text-stone-600 select-none">
+        <div className="flex flex-col items-center justify-center space-y-2 text-stone-600 select-none min-h-[350px]">
           <Loader2 className="animate-spin text-stone-700" size={24} />
-          <span className="text-[10px] font-semibold">Loading Page {pageNumber}...</span>
+          <span className="text-[10px] font-semibold">Page {pageNumber}</span>
         </div>
       )}
     </div>
@@ -146,11 +144,50 @@ export const PDFReader: React.FC = () => {
   const [numPages, setNumPages] = useState<number | null>(null);
   const [pageNumber, setPageNumber] = useState<number>(1);
   const [inputPage, setInputPage] = useState<string>('1');
-  const [scale, setScale] = useState<number>(1.0);
+
+  // Dynamic responsive scaling & zoom states
+  const [containerWidth, setContainerWidth] = useState<number>(600);
+  const [fitMode, setFitMode] = useState<'width' | 'custom'>('width');
+  const [zoomMultiplier, setZoomMultiplier] = useState<number>(1.0);
+
+  // Touch Swipe tracking
+  const touchStartX = useRef<number | null>(null);
+  const touchStartY = useRef<number | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isProgrammaticScrollRef = useRef<boolean>(false);
+
+  // Measure scroll container width dynamically to adapt to any device viewport
+  useEffect(() => {
+    const updateDimensions = () => {
+      if (scrollContainerRef.current) {
+        const padding = window.innerWidth < 640 ? 24 : 48;
+        const availableWidth = scrollContainerRef.current.clientWidth - padding;
+        setContainerWidth(Math.max(260, availableWidth));
+      } else {
+        const padding = window.innerWidth < 640 ? 24 : 48;
+        setContainerWidth(Math.max(260, window.innerWidth - padding));
+      }
+    };
+
+    updateDimensions();
+    window.addEventListener('resize', updateDimensions);
+    return () => window.removeEventListener('resize', updateDimensions);
+  }, []);
+
+  // Compute effective pixel width for rendering pages comfortably
+  const effectivePageWidth = useMemo(() => {
+    if (fitMode === 'width') {
+      // Fit to screen width on mobile, max 800px on desktop for optimum typography readability
+      const isMobile = window.innerWidth < 640;
+      const targetWidth = isMobile ? containerWidth : Math.min(containerWidth, 800);
+      return Math.max(260, targetWidth);
+    }
+    // Custom zoom level
+    const baseWidth = window.innerWidth < 640 ? containerWidth : Math.min(containerWidth, 750);
+    return Math.max(260, Math.round(baseWidth * zoomMultiplier));
+  }, [containerWidth, fitMode, zoomMultiplier]);
 
   useEffect(() => {
     const loadPDF = async () => {
@@ -162,11 +199,11 @@ export const PDFReader: React.FC = () => {
         const bookInfo = await api.get<Book>(`/api/books/${id}`);
         setBook(bookInfo);
 
-        // Fetch pre-signed/local file reading URL to verify permissions and log reading event
+        // Log reading event & check permissions
         await api.get<{ url: string }>(`/api/books/${id}/read`);
 
-        // Use backend stream proxy URL directly to avoid CORS issues on presigned Cloudflare R2 / S3 URLs
-        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+        // Stream proxy URL
+        const apiBaseUrl = getApiBaseUrl();
         setPdfURL(`${apiBaseUrl}/api/books/${id}/pdf`);
       } catch (e: any) {
         console.error('Failed to load PDF reader:', e);
@@ -179,7 +216,7 @@ export const PDFReader: React.FC = () => {
     loadPDF();
   }, [id]);
 
-  // Sync keyboard input page number with actual pageNumber
+  // Sync input string with current page number
   useEffect(() => {
     setInputPage(String(pageNumber));
   }, [pageNumber]);
@@ -192,7 +229,6 @@ export const PDFReader: React.FC = () => {
       isProgrammaticScrollRef.current = true;
       el.scrollIntoView({ behavior: 'smooth', block: 'start' });
       
-      // Reset the programmatic scroll flag after smooth scroll completes
       setTimeout(() => {
         isProgrammaticScrollRef.current = false;
       }, 800);
@@ -257,7 +293,7 @@ export const PDFReader: React.FC = () => {
     }
   };
 
-  // Handle Fullscreen toggle
+  // Fullscreen toggle
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
 
@@ -274,7 +310,7 @@ export const PDFReader: React.FC = () => {
     }
   };
 
-  // Sync fullscreen state if changed via escape key
+  // Sync fullscreen state
   useEffect(() => {
     const handleFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement);
@@ -332,9 +368,25 @@ export const PDFReader: React.FC = () => {
   };
 
   // Zoom controls
-  const handleZoomIn = () => setScale(prev => Math.min(prev + 0.25, 2.5));
-  const handleZoomOut = () => setScale(prev => Math.max(prev - 0.25, 0.5));
-  const handleZoomReset = () => setScale(1.0);
+  const handleZoomIn = () => {
+    setFitMode('custom');
+    setZoomMultiplier(prev => Math.min(prev + 0.2, 2.2));
+  };
+
+  const handleZoomOut = () => {
+    setFitMode('custom');
+    setZoomMultiplier(prev => Math.max(prev - 0.2, 0.5));
+  };
+
+  const handleFitToWidth = () => {
+    setFitMode('width');
+    setZoomMultiplier(1.0);
+  };
+
+  const handleZoomReset = () => {
+    setFitMode('custom');
+    setZoomMultiplier(1.0);
+  };
 
   if (loading) {
     return (
@@ -367,78 +419,135 @@ export const PDFReader: React.FC = () => {
     );
   }
 
+  // Touch Swipe Navigation for mobile devices
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null || touchStartY.current === null) return;
+    const diffX = touchStartX.current - e.changedTouches[0].clientX;
+    const diffY = touchStartY.current - e.changedTouches[0].clientY;
+
+    // Trigger swipe page navigation if horizontal drag > 55px & vertical shift < 45px
+    if (Math.abs(diffX) > 55 && Math.abs(diffY) < 45) {
+      if (diffX > 0) {
+        handleNextPage();
+      } else {
+        handlePrevPage();
+      }
+    }
+    touchStartX.current = null;
+    touchStartY.current = null;
+  };
+
   return (
     <div
       ref={containerRef}
       onContextMenu={(e) => e.preventDefault()}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
       className="bg-stone-950 flex flex-col w-screen h-screen overflow-hidden select-none relative"
     >
       {/* Header bar controls */}
-      <header className="bg-stone-900 text-stone-200 px-6 py-4 flex items-center justify-between border-b border-stone-800 select-none z-10 shadow-md">
+      <header className="bg-stone-900 text-stone-200 px-3 sm:px-6 py-2.5 sm:py-3.5 flex items-center justify-between border-b border-stone-800 select-none z-10 shadow-md gap-2">
         
         {/* Left Side: Back & title */}
-        <div className="flex items-center space-x-4 min-w-0 pr-4">
+        <div className="flex items-center space-x-2 sm:space-x-3.5 min-w-0 pr-2">
           <button
             onClick={handleBack}
-            className="p-1.5 bg-stone-800 hover:bg-stone-700 text-stone-200 rounded-lg transition-all"
+            className="p-1.5 bg-stone-800 hover:bg-stone-700 text-stone-200 rounded-lg transition-all shrink-0"
             aria-label="Back to details"
           >
             <ArrowLeft size={16} />
           </button>
           <div className="min-w-0">
-            <h1 className="font-serif text-sm font-bold text-white leading-tight truncate">
+            <h1 className="font-serif text-xs sm:text-sm font-bold text-white leading-tight truncate">
               {book.title}
             </h1>
-            <p className="text-[10px] text-stone-400 font-medium truncate mt-0.5">
-              By {book.author_name} • Reading Online
+            <p className="text-[9px] sm:text-[10px] text-stone-400 font-medium truncate mt-0.5">
+              By {book.author_name}
             </p>
           </div>
         </div>
 
-        {/* Center: Zoom Controls */}
-        <div className="flex items-center space-x-2 bg-stone-800/80 border border-stone-700 px-2.5 py-1 rounded-full">
+        {/* Center: Zoom Controls & Fit Width Toggle */}
+        <div className="flex items-center space-x-1 sm:space-x-2 bg-stone-800/80 border border-stone-700/80 px-2 sm:px-3 py-1 rounded-full shrink-0">
+          
+          {/* Fit Width Toggle Button */}
+          <button
+            onClick={handleFitToWidth}
+            className={`p-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1 transition-all ${
+              fitMode === 'width'
+                ? 'bg-brand-500 text-white shadow-sm'
+                : 'text-stone-400 hover:text-white hover:bg-stone-700'
+            }`}
+            title="Fit to Device Width"
+            type="button"
+          >
+            <Maximize size={13} />
+            <span className="hidden sm:inline text-[10px]">Fit Width</span>
+          </button>
+
+          <div className="w-[1px] h-3.5 bg-stone-700 mx-0.5" />
+
+          {/* Zoom Out */}
           <button
             onClick={handleZoomOut}
-            disabled={scale <= 0.5}
+            disabled={fitMode === 'custom' && zoomMultiplier <= 0.5}
             className="p-1 text-stone-400 hover:text-white disabled:opacity-30 disabled:hover:text-stone-400 transition-all"
             title="Zoom Out"
+            type="button"
           >
-            <ZoomOut size={15} />
+            <ZoomOut size={14} />
           </button>
-          <span className="text-[11px] font-bold min-w-[40px] text-center text-stone-300">
-            {Math.round(scale * 100)}%
+
+          {/* Scale indicator */}
+          <span className="text-[10px] sm:text-[11px] font-bold min-w-[36px] sm:min-w-[42px] text-center text-stone-300">
+            {fitMode === 'width' ? 'Auto Fit' : `${Math.round(zoomMultiplier * 100)}%`}
           </span>
+
+          {/* Zoom In */}
           <button
             onClick={handleZoomIn}
-            disabled={scale >= 2.5}
+            disabled={fitMode === 'custom' && zoomMultiplier >= 2.2}
             className="p-1 text-stone-400 hover:text-white disabled:opacity-30 disabled:hover:text-stone-400 transition-all"
             title="Zoom In"
+            type="button"
           >
-            <ZoomIn size={15} />
+            <ZoomIn size={14} />
           </button>
-          <div className="w-[1px] h-3 bg-stone-700 mx-1" />
-          <button
-            onClick={handleZoomReset}
-            className="p-1 text-stone-400 hover:text-white transition-all"
-            title="Reset Zoom"
-          >
-            <RotateCcw size={14} />
-          </button>
+
+          {fitMode === 'custom' && (
+            <>
+              <div className="w-[1px] h-3.5 bg-stone-700 mx-0.5" />
+              <button
+                onClick={handleZoomReset}
+                className="p-1 text-stone-400 hover:text-white transition-all"
+                title="Reset Zoom"
+                type="button"
+              >
+                <RotateCcw size={13} />
+              </button>
+            </>
+          )}
         </div>
 
         {/* Right Side: Options & Fullscreen */}
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-2 sm:space-x-3 shrink-0">
           <span className="hidden md:flex items-center space-x-1.5 px-3 py-1 bg-stone-800 border border-stone-700/50 rounded-full text-[10px] font-semibold text-brand-300 uppercase tracking-wider">
             <Eye size={12} />
             <span>Read-Only Room</span>
           </span>
           <button
             onClick={toggleFullscreen}
-            className="p-2 bg-stone-800 hover:bg-stone-700 text-stone-200 rounded-lg transition-all"
+            className="p-1.5 sm:p-2 bg-stone-800 hover:bg-stone-700 text-stone-200 rounded-lg transition-all"
             aria-label="Toggle Fullscreen"
             title="Toggle Fullscreen"
+            type="button"
           >
-            {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+            {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
           </button>
         </div>
 
@@ -447,7 +556,7 @@ export const PDFReader: React.FC = () => {
       {/* Scrollable PDF Viewer Container */}
       <div 
         ref={scrollContainerRef}
-        className="flex-grow bg-stone-950 overflow-auto flex items-start justify-center p-6 relative"
+        className="flex-grow bg-stone-950 overflow-auto flex items-start justify-center p-3 sm:p-6 relative scroll-smooth"
       >
         <Document
           file={pdfURL}
@@ -476,12 +585,12 @@ export const PDFReader: React.FC = () => {
           }
         >
           {numPages && (
-            <div className="flex flex-col space-y-8 pb-32 max-w-full">
+            <div className="flex flex-col space-y-4 sm:space-y-6 pb-32 max-w-full items-center">
               {Array.from(new Array(numPages), (_, index) => (
                 <LazyPDFPage
                   key={`page_${index + 1}`}
                   pageNumber={index + 1}
-                  scale={scale}
+                  width={effectivePageWidth}
                   onVisible={handlePageVisible}
                 />
               ))}
@@ -491,15 +600,16 @@ export const PDFReader: React.FC = () => {
 
         {/* Bottom Floating Navigation Bar */}
         {numPages && (
-          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-stone-900/90 backdrop-blur-md border border-stone-800 px-4 py-2.5 rounded-full flex items-center space-x-4 shadow-xl z-20 text-white select-none">
+          <div className="fixed bottom-3 sm:bottom-6 left-1/2 -translate-x-1/2 bg-stone-900/95 backdrop-blur-md border border-stone-800 px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-full flex items-center space-x-3 sm:space-x-5 shadow-2xl z-30 text-white select-none">
             <button
               onClick={handlePrevPage}
               disabled={pageNumber <= 1}
-              className="p-1.5 hover:bg-stone-800 disabled:opacity-30 disabled:hover:bg-transparent rounded-full transition-all"
+              className="p-1.5 sm:p-2 hover:bg-stone-800 disabled:opacity-30 disabled:hover:bg-transparent rounded-full transition-all min-w-[36px] min-h-[36px] flex items-center justify-center"
               aria-label="Previous Page"
               title="Previous Page"
+              type="button"
             >
-              <ChevronLeft size={18} />
+              <ChevronLeft size={20} />
             </button>
             
             <div className="flex items-center space-x-1.5 text-xs font-semibold text-stone-300">
@@ -513,25 +623,25 @@ export const PDFReader: React.FC = () => {
                     handlePageJump();
                   }
                 }}
-                className="w-10 bg-stone-800 border border-stone-700 focus:border-brand-500 focus:outline-none rounded py-0.5 text-center text-white text-xs font-bold"
+                className="w-10 sm:w-11 bg-stone-800 border border-stone-700 focus:border-brand-500 focus:outline-none rounded-lg py-1 text-center text-white text-xs font-bold"
               />
-              <span className="text-stone-500">/</span>
-              <span>{numPages}</span>
+              <span className="text-stone-500 font-bold">/</span>
+              <span className="font-bold">{numPages}</span>
             </div>
 
             <button
               onClick={handleNextPage}
               disabled={pageNumber >= numPages}
-              className="p-1.5 hover:bg-stone-800 disabled:opacity-30 disabled:hover:bg-transparent rounded-full transition-all"
+              className="p-1.5 sm:p-2 hover:bg-stone-800 disabled:opacity-30 disabled:hover:bg-transparent rounded-full transition-all min-w-[36px] min-h-[36px] flex items-center justify-center"
               aria-label="Next Page"
               title="Next Page"
+              type="button"
             >
-              <ChevronRight size={18} />
+              <ChevronRight size={20} />
             </button>
           </div>
         )}
       </div>
-
 
     </div>
   );

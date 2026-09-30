@@ -1,6 +1,18 @@
 import type { JSONResponse } from '../types';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+export const getApiBaseUrl = (): string => {
+  const envUrl = import.meta.env.VITE_API_BASE_URL;
+  if (envUrl) {
+    if (typeof window !== 'undefined' && window.location && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      return envUrl.replace('localhost', window.location.hostname).replace('127.0.0.1', window.location.hostname);
+    }
+    return envUrl;
+  }
+  if (typeof window !== 'undefined' && window.location && window.location.hostname) {
+    return `${window.location.protocol}//${window.location.hostname}:8080`;
+  }
+  return 'http://localhost:8080';
+};
 
 class APIClient {
   private getHeaders(): HeadersInit {
@@ -44,7 +56,7 @@ class APIClient {
   }
 
   async get<T>(path: string): Promise<T> {
-    const response = await fetch(`${API_BASE_URL}${path}`, {
+    const response = await fetch(`${getApiBaseUrl()}${path}`, {
       method: 'GET',
       headers: this.getHeaders(),
     });
@@ -52,7 +64,7 @@ class APIClient {
   }
 
   async post<T>(path: string, body?: any): Promise<T> {
-    const response = await fetch(`${API_BASE_URL}${path}`, {
+    const response = await fetch(`${getApiBaseUrl()}${path}`, {
       method: 'POST',
       headers: this.getHeaders(),
       body: body ? JSON.stringify(body) : undefined,
@@ -61,7 +73,7 @@ class APIClient {
   }
 
   async put<T>(path: string, body?: any): Promise<T> {
-    const response = await fetch(`${API_BASE_URL}${path}`, {
+    const response = await fetch(`${getApiBaseUrl()}${path}`, {
       method: 'PUT',
       headers: this.getHeaders(),
       body: body ? JSON.stringify(body) : undefined,
@@ -70,7 +82,7 @@ class APIClient {
   }
 
   async delete<T>(path: string): Promise<T> {
-    const response = await fetch(`${API_BASE_URL}${path}`, {
+    const response = await fetch(`${getApiBaseUrl()}${path}`, {
       method: 'DELETE',
       headers: this.getHeaders(),
     });
@@ -88,7 +100,7 @@ class APIClient {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const response = await fetch(`${API_BASE_URL}${path}`, {
+    const response = await fetch(`${getApiBaseUrl()}${path}`, {
       method: 'POST',
       headers,
       body: formData,
