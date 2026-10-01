@@ -140,15 +140,17 @@ export const Home: React.FC = () => {
         <div className="bg-white p-8 rounded-2xl border border-brand-100/30 shadow-sm space-y-4">
           <h3 className="font-serif text-lg font-bold text-stone-900">Browse by Category</h3>
           <div className="flex flex-wrap gap-2.5">
-            {categories.map((cat) => (
-              <Link
-                key={cat.id}
-                to={`/library?category=${cat.id}`}
-                className="px-4 py-2 bg-stone-50 hover:bg-brand-50 hover:text-brand-700 text-stone-700 font-medium text-xs rounded-xl border border-stone-200/50 transition-all"
-              >
-                {cat.name}
-              </Link>
-            ))}
+            {categories
+              .filter((cat) => cat.name.trim().toLowerCase() !== 'all')
+              .map((cat) => (
+                <Link
+                  key={cat.id}
+                  to={`/library?category=${cat.id}`}
+                  className="px-4 py-2 bg-stone-50 hover:bg-brand-50 hover:text-brand-700 text-stone-700 font-medium text-xs rounded-xl border border-stone-200/50 transition-all"
+                >
+                  {cat.name}
+                </Link>
+              ))}
           </div>
         </div>
 

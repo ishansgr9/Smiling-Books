@@ -65,11 +65,13 @@ export const FilterPanel: React.FC<FilterPanelProps> = ({
             className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs focus:ring-1 focus:ring-brand-500 focus:border-brand-500 text-stone-700 font-sans"
           >
             <option value={0}>All Categories</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
+            {categories
+              .filter((c) => c.name.trim().toLowerCase() !== 'all')
+              .map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
           </select>
         </div>
 
