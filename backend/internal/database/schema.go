@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS books (
     publication_year INT,
     cover_object_key VARCHAR(500),
     pdf_object_key VARCHAR(500),
+    epub_object_key VARCHAR(500),
     rights_status VARCHAR(50) NOT NULL DEFAULT 'PENDING_REVIEW',
     published BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -75,4 +76,7 @@ CREATE INDEX IF NOT EXISTS idx_books_category_id ON books (category_id);
 CREATE INDEX IF NOT EXISTS idx_books_language_id ON books (language_id);
 CREATE INDEX IF NOT EXISTS idx_books_published ON books (published);
 CREATE INDEX IF NOT EXISTS idx_books_rights_status ON books (rights_status);
+
+-- Migration for existing databases
+ALTER TABLE books ADD COLUMN IF NOT EXISTS epub_object_key VARCHAR(500);
 `

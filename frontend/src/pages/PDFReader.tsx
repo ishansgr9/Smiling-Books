@@ -14,9 +14,12 @@ import {
   RotateCcw,
   ChevronLeft,
   ChevronRight,
-  Maximize
+  Maximize,
+  BookOpen,
+  FileText
 } from 'lucide-react';
 import { Document, Page, pdfjs } from 'react-pdf';
+import EPUBViewer from '../components/EPUBViewer';
 
 // Import local worker via Vite URL query to avoid external CDN requests and CSP blocks
 // @ts-ignore
@@ -133,6 +136,11 @@ export const PDFReader: React.FC = () => {
 
   const [book, setBook] = useState<Book | null>(null);
   const [pdfURL, setPdfURL] = useState<string | null>(null);
+  const [epubURL, setEpubURL] = useState<string | null>(null);
+  const [activeFormat, setActiveFormat] = useState<'pdf' | 'epub'>('pdf');
+  const [hasPdf, setHasPdf] = useState(false);
+  const [hasEpub, setHasEpub] = useState(false);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -179,41 +187,67 @@ export const PDFReader: React.FC = () => {
   // Compute effective pixel width for rendering pages comfortably
   const effectivePageWidth = useMemo(() => {
     if (fitMode === 'width') {
-      // Fit to screen width on mobile, max 800px on desktop for optimum typography readability
       const isMobile = window.innerWidth < 640;
       const targetWidth = isMobile ? containerWidth : Math.min(containerWidth, 800);
       return Math.max(260, targetWidth);
     }
-    // Custom zoom level
     const baseWidth = window.innerWidth < 640 ? containerWidth : Math.min(containerWidth, 750);
     return Math.max(260, Math.round(baseWidth * zoomMultiplier));
   }, [containerWidth, fitMode, zoomMultiplier]);
 
   useEffect(() => {
-    const loadPDF = async () => {
+    const loadBook = async () => {
       if (!id) return;
       setLoading(true);
       setError(null);
       try {
-        // Fetch book info first
+        // Fetch book info
         const bookInfo = await api.get<Book>(`/api/books/${id}`);
         setBook(bookInfo);
 
-        // Log reading event & check permissions
-        await api.get<{ url: string }>(`/api/books/${id}/read`);
+        // Check format availability
+        const readData = await api.get<{
+          has_pdf?: boolean;
+          has_epub?: boolean;
+          pdf_url?: string;
+          epub_url?: string;
+          format?: 'pdf' | 'epub';
+          url?: string;
+        }>(`/api/books/${id}/read`);
 
-        // Stream proxy URL
+        const pdfExists = !!(readData.has_pdf || bookInfo.pdf_object_key);
+        const epubExists = !!(readData.has_epub || bookInfo.epub_object_key);
+
+        setHasPdf(pdfExists);
+        setHasEpub(epubExists);
+
         const apiBaseUrl = getApiBaseUrl();
-        setPdfURL(`${apiBaseUrl}/api/books/${id}/pdf`);
+        if (pdfExists) {
+          setPdfURL(`${apiBaseUrl}/api/books/${id}/pdf`);
+        }
+        if (epubExists) {
+          setEpubURL(`${apiBaseUrl}/api/books/${id}/epub`);
+        }
+
+        // Determine default format: EPUB preferred if available, or PDF
+        if (epubExists && !pdfExists) {
+          setActiveFormat('epub');
+        } else if (pdfExists && !epubExists) {
+          setActiveFormat('pdf');
+        } else if (epubExists) {
+          setActiveFormat('epub');
+        } else {
+          setActiveFormat('pdf');
+        }
       } catch (e: any) {
-        console.error('Failed to load PDF reader:', e);
-        setError(e.message || 'The PDF document could not be fetched or loaded.');
+        console.error('Failed to load book reader:', e);
+        setError(e.message || 'The book document could not be fetched or loaded.');
       } finally {
         setLoading(false);
       }
     };
 
-    loadPDF();
+    loadBook();
   }, [id]);
 
   // Sync input string with current page number
@@ -264,19 +298,21 @@ export const PDFReader: React.FC = () => {
         return;
       }
 
-      // Page Navigation Shortcuts (ArrowRight/ArrowLeft)
-      if (e.key === 'ArrowRight') {
-        setPageNumber(prev => {
-          const next = numPages ? Math.min(prev + 1, numPages) : prev;
-          scrollToPage(next);
-          return next;
-        });
-      } else if (e.key === 'ArrowLeft') {
-        setPageNumber(prev => {
-          const next = Math.max(prev - 1, 1);
-          scrollToPage(next);
-          return next;
-        });
+      // PDF Page Navigation Shortcuts (ArrowRight/ArrowLeft)
+      if (activeFormat === 'pdf') {
+        if (e.key === 'ArrowRight') {
+          setPageNumber((prev) => {
+            const next = numPages ? Math.min(prev + 1, numPages) : prev;
+            scrollToPage(next);
+            return next;
+          });
+        } else if (e.key === 'ArrowLeft') {
+          setPageNumber((prev) => {
+            const next = Math.max(prev - 1, 1);
+            scrollToPage(next);
+            return next;
+          });
+        }
       }
     };
 
@@ -284,7 +320,7 @@ export const PDFReader: React.FC = () => {
     return () => {
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [numPages]);
+  }, [numPages, activeFormat]);
 
   // Handler passed to lazy pages to sync indicator on manual scrolls
   const handlePageVisible = (pageNum: number) => {
@@ -370,12 +406,12 @@ export const PDFReader: React.FC = () => {
   // Zoom controls
   const handleZoomIn = () => {
     setFitMode('custom');
-    setZoomMultiplier(prev => Math.min(prev + 0.2, 2.2));
+    setZoomMultiplier((prev) => Math.min(prev + 0.2, 2.2));
   };
 
   const handleZoomOut = () => {
     setFitMode('custom');
-    setZoomMultiplier(prev => Math.max(prev - 0.2, 0.5));
+    setZoomMultiplier((prev) => Math.max(prev - 0.2, 0.5));
   };
 
   const handleFitToWidth = () => {
@@ -388,6 +424,29 @@ export const PDFReader: React.FC = () => {
     setZoomMultiplier(1.0);
   };
 
+  // Touch Swipe Navigation for mobile devices (PDF)
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (activeFormat !== 'pdf') return;
+    if (touchStartX.current === null || touchStartY.current === null) return;
+    const diffX = touchStartX.current - e.changedTouches[0].clientX;
+    const diffY = touchStartY.current - e.changedTouches[0].clientY;
+
+    if (Math.abs(diffX) > 55 && Math.abs(diffY) < 45) {
+      if (diffX > 0) {
+        handleNextPage();
+      } else {
+        handlePrevPage();
+      }
+    }
+    touchStartX.current = null;
+    touchStartY.current = null;
+  };
+
   if (loading) {
     return (
       <div className="h-[70vh] flex flex-col items-center justify-center space-y-4">
@@ -397,14 +456,14 @@ export const PDFReader: React.FC = () => {
     );
   }
 
-  if (error || !book || !pdfURL) {
+  if (error || !book || (!pdfURL && !epubURL)) {
     return (
       <div className="h-[75vh] flex items-center justify-center p-4">
         <div className="text-center max-w-md space-y-4 bg-white border border-brand-100 rounded-3xl p-8 shadow-sm">
           <AlertCircle size={44} className="mx-auto text-red-500 stroke-[1.2]" />
           <h2 className="font-serif text-xl font-bold text-stone-800">Reading Room Error</h2>
           <p className="text-sm text-stone-500 leading-relaxed">
-            {error || 'Unable to load the book text. Please verify the file exists.'}
+            {error || 'Unable to load the book document. Please verify the file has been uploaded.'}
           </p>
           <button
             onClick={handleBack}
@@ -419,29 +478,6 @@ export const PDFReader: React.FC = () => {
     );
   }
 
-  // Touch Swipe Navigation for mobile devices
-  const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartX.current = e.touches[0].clientX;
-    touchStartY.current = e.touches[0].clientY;
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (touchStartX.current === null || touchStartY.current === null) return;
-    const diffX = touchStartX.current - e.changedTouches[0].clientX;
-    const diffY = touchStartY.current - e.changedTouches[0].clientY;
-
-    // Trigger swipe page navigation if horizontal drag > 55px & vertical shift < 45px
-    if (Math.abs(diffX) > 55 && Math.abs(diffY) < 45) {
-      if (diffX > 0) {
-        handleNextPage();
-      } else {
-        handlePrevPage();
-      }
-    }
-    touchStartX.current = null;
-    touchStartY.current = null;
-  };
-
   return (
     <div
       ref={containerRef}
@@ -450,8 +486,8 @@ export const PDFReader: React.FC = () => {
       onTouchEnd={handleTouchEnd}
       className="bg-stone-950 flex flex-col w-screen h-screen overflow-hidden select-none relative"
     >
-      {/* Header bar controls */}
-      <header className="bg-stone-900 text-stone-200 px-3 sm:px-6 py-2.5 sm:py-3.5 flex items-center justify-between border-b border-stone-800 select-none z-10 shadow-md gap-2">
+      {/* Top Header bar controls */}
+      <header className="bg-stone-900 text-stone-200 px-3 sm:px-6 py-2 sm:py-2.5 flex items-center justify-between border-b border-stone-800 select-none z-30 shadow-md gap-2">
         
         {/* Left Side: Back & title */}
         <div className="flex items-center space-x-2 sm:space-x-3.5 min-w-0 pr-2">
@@ -472,72 +508,113 @@ export const PDFReader: React.FC = () => {
           </div>
         </div>
 
-        {/* Center: Zoom Controls & Fit Width Toggle */}
-        <div className="flex items-center space-x-1 sm:space-x-2 bg-stone-800/80 border border-stone-700/80 px-2 sm:px-3 py-1 rounded-full shrink-0">
+        {/* Center: Format switcher & PDF Zoom Controls */}
+        <div className="flex items-center space-x-2 shrink-0">
           
-          {/* Fit Width Toggle Button */}
-          <button
-            onClick={handleFitToWidth}
-            className={`p-1.5 rounded-lg text-xs font-semibold flex items-center space-x-1 transition-all ${
-              fitMode === 'width'
-                ? 'bg-brand-500 text-white shadow-sm'
-                : 'text-stone-400 hover:text-white hover:bg-stone-700'
-            }`}
-            title="Fit to Device Width"
-            type="button"
-          >
-            <Maximize size={13} />
-            <span className="hidden sm:inline text-[10px]">Fit Width</span>
-          </button>
-
-          <div className="w-[1px] h-3.5 bg-stone-700 mx-0.5" />
-
-          {/* Zoom Out */}
-          <button
-            onClick={handleZoomOut}
-            disabled={fitMode === 'custom' && zoomMultiplier <= 0.5}
-            className="p-1 text-stone-400 hover:text-white disabled:opacity-30 disabled:hover:text-stone-400 transition-all"
-            title="Zoom Out"
-            type="button"
-          >
-            <ZoomOut size={14} />
-          </button>
-
-          {/* Scale indicator */}
-          <span className="text-[10px] sm:text-[11px] font-bold min-w-[36px] sm:min-w-[42px] text-center text-stone-300">
-            {fitMode === 'width' ? 'Auto Fit' : `${Math.round(zoomMultiplier * 100)}%`}
-          </span>
-
-          {/* Zoom In */}
-          <button
-            onClick={handleZoomIn}
-            disabled={fitMode === 'custom' && zoomMultiplier >= 2.2}
-            className="p-1 text-stone-400 hover:text-white disabled:opacity-30 disabled:hover:text-stone-400 transition-all"
-            title="Zoom In"
-            type="button"
-          >
-            <ZoomIn size={14} />
-          </button>
-
-          {fitMode === 'custom' && (
-            <>
-              <div className="w-[1px] h-3.5 bg-stone-700 mx-0.5" />
+          {/* Dual Format Switcher (shown when both formats exist) */}
+          {hasPdf && hasEpub && (
+            <div className="flex items-center bg-stone-800 p-0.5 rounded-lg border border-stone-700">
               <button
-                onClick={handleZoomReset}
-                className="p-1 text-stone-400 hover:text-white transition-all"
-                title="Reset Zoom"
+                onClick={() => setActiveFormat('epub')}
+                className={`flex items-center space-x-1 px-2 py-1 rounded-md text-[10px] font-bold transition-all ${
+                  activeFormat === 'epub'
+                    ? 'bg-purple-600 text-white shadow-sm'
+                    : 'text-stone-400 hover:text-white'
+                }`}
+                title="Switch to EPUB View"
                 type="button"
               >
-                <RotateCcw size={13} />
+                <BookOpen size={11} />
+                <span>EPUB</span>
               </button>
-            </>
+              <button
+                onClick={() => setActiveFormat('pdf')}
+                className={`flex items-center space-x-1 px-2 py-1 rounded-md text-[10px] font-bold transition-all ${
+                  activeFormat === 'pdf'
+                    ? 'bg-red-600 text-white shadow-sm'
+                    : 'text-stone-400 hover:text-white'
+                }`}
+                title="Switch to PDF View"
+                type="button"
+              >
+                <FileText size={11} />
+                <span>PDF</span>
+              </button>
+            </div>
+          )}
+
+          {/* Single format badge if only 1 format exists */}
+          {(!hasPdf || !hasEpub) && (
+            <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border uppercase tracking-wider ${
+              activeFormat === 'epub'
+                ? 'bg-purple-950 text-purple-300 border-purple-800'
+                : 'bg-red-950 text-red-300 border-red-800'
+            }`}>
+              {activeFormat.toUpperCase()} Mode
+            </span>
+          )}
+
+          {/* PDF Zoom Controls (only shown in PDF mode) */}
+          {activeFormat === 'pdf' && (
+            <div className="hidden sm:flex items-center space-x-1 sm:space-x-2 bg-stone-800/80 border border-stone-700/80 px-2 py-1 rounded-full">
+              <button
+                onClick={handleFitToWidth}
+                className={`p-1 rounded-lg text-xs font-semibold flex items-center space-x-1 transition-all ${
+                  fitMode === 'width'
+                    ? 'bg-brand-500 text-white shadow-sm'
+                    : 'text-stone-400 hover:text-white hover:bg-stone-700'
+                }`}
+                title="Fit to Device Width"
+                type="button"
+              >
+                <Maximize size={12} />
+                <span className="hidden md:inline text-[10px]">Fit Width</span>
+              </button>
+
+              <div className="w-[1px] h-3 bg-stone-700 mx-0.5" />
+
+              <button
+                onClick={handleZoomOut}
+                disabled={fitMode === 'custom' && zoomMultiplier <= 0.5}
+                className="p-1 text-stone-400 hover:text-white disabled:opacity-30 transition-all"
+                title="Zoom Out"
+                type="button"
+              >
+                <ZoomOut size={13} />
+              </button>
+
+              <span className="text-[10px] font-bold min-w-[36px] text-center text-stone-300">
+                {fitMode === 'width' ? 'Auto' : `${Math.round(zoomMultiplier * 100)}%`}
+              </span>
+
+              <button
+                onClick={handleZoomIn}
+                disabled={fitMode === 'custom' && zoomMultiplier >= 2.2}
+                className="p-1 text-stone-400 hover:text-white disabled:opacity-30 transition-all"
+                title="Zoom In"
+                type="button"
+              >
+                <ZoomIn size={13} />
+              </button>
+
+              {fitMode === 'custom' && (
+                <button
+                  onClick={handleZoomReset}
+                  className="p-1 text-stone-400 hover:text-white transition-all"
+                  title="Reset Zoom"
+                  type="button"
+                >
+                  <RotateCcw size={12} />
+                </button>
+              )}
+            </div>
           )}
         </div>
 
         {/* Right Side: Options & Fullscreen */}
-        <div className="flex items-center space-x-2 sm:space-x-3 shrink-0">
-          <span className="hidden md:flex items-center space-x-1.5 px-3 py-1 bg-stone-800 border border-stone-700/50 rounded-full text-[10px] font-semibold text-brand-300 uppercase tracking-wider">
-            <Eye size={12} />
+        <div className="flex items-center space-x-2 shrink-0">
+          <span className="hidden lg:flex items-center space-x-1.5 px-2.5 py-0.5 bg-stone-800 border border-stone-700/50 rounded-full text-[10px] font-semibold text-brand-300 uppercase tracking-wider">
+            <Eye size={11} />
             <span>Read-Only Room</span>
           </span>
           <button
@@ -553,92 +630,103 @@ export const PDFReader: React.FC = () => {
 
       </header>
 
-      {/* Scrollable PDF Viewer Container */}
-      <div 
-        ref={scrollContainerRef}
-        className="flex-grow bg-stone-950 overflow-auto flex items-start justify-center p-3 sm:p-6 relative scroll-smooth"
-      >
-        <Document
-          file={pdfURL}
-          options={pdfOptions}
-          onLoadSuccess={onDocumentLoadSuccess}
-          onLoadError={onDocumentLoadError}
-          loading={
-            <div className="flex flex-col items-center justify-center space-y-4 py-32">
-              <Loader2 className="animate-spin text-stone-500" size={36} />
-              <p className="text-sm font-medium text-stone-500">Loading document...</p>
-            </div>
-          }
-          error={
-            <div className="flex flex-col items-center justify-center space-y-4 py-32 text-center max-w-md px-4">
-              <AlertCircle size={40} className="text-red-500 stroke-[1.2]" />
-              <p className="text-sm font-medium text-stone-400">Failed to render book pages. Please reload or check the document format.</p>
-              {loadError && (
-                <div className="mt-2 text-left w-full">
-                  <p className="text-[10px] text-stone-500 font-bold uppercase tracking-wider mb-1">Error Diagnostics:</p>
-                  <p className="text-[11px] text-red-400 bg-stone-900 border border-stone-800 px-3 py-2 rounded-lg font-mono break-all max-h-32 overflow-y-auto">
-                    {loadError}
-                  </p>
+      {/* Main Content Area: EPUB or PDF */}
+      <div className="flex-grow w-full h-full overflow-hidden relative">
+        {activeFormat === 'epub' && epubURL ? (
+          <EPUBViewer
+            url={epubURL}
+            bookTitle={book.title}
+            authorName={book.author_name}
+          />
+        ) : (
+          /* PDF Viewer */
+          <div 
+            ref={scrollContainerRef}
+            className="w-full h-full bg-stone-950 overflow-auto flex items-start justify-center p-3 sm:p-6 relative scroll-smooth"
+          >
+            <Document
+              file={pdfURL}
+              options={pdfOptions}
+              onLoadSuccess={onDocumentLoadSuccess}
+              onLoadError={onDocumentLoadError}
+              loading={
+                <div className="flex flex-col items-center justify-center space-y-4 py-32">
+                  <Loader2 className="animate-spin text-stone-500" size={36} />
+                  <p className="text-sm font-medium text-stone-500">Loading PDF document...</p>
+                </div>
+              }
+              error={
+                <div className="flex flex-col items-center justify-center space-y-4 py-32 text-center max-w-md px-4">
+                  <AlertCircle size={40} className="text-red-500 stroke-[1.2]" />
+                  <p className="text-sm font-medium text-stone-400">Failed to render book pages. Please reload or check the document format.</p>
+                  {loadError && (
+                    <div className="mt-2 text-left w-full">
+                      <p className="text-[10px] text-stone-500 font-bold uppercase tracking-wider mb-1">Error Diagnostics:</p>
+                      <p className="text-[11px] text-red-400 bg-stone-900 border border-stone-800 px-3 py-2 rounded-lg font-mono break-all max-h-32 overflow-y-auto">
+                        {loadError}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              }
+            >
+              {numPages && (
+                <div className="flex flex-col space-y-4 sm:space-y-6 pb-32 max-w-full items-center">
+                  {Array.from(new Array(numPages), (_, index) => (
+                    <LazyPDFPage
+                      key={`page_${index + 1}`}
+                      pageNumber={index + 1}
+                      width={effectivePageWidth}
+                      onVisible={handlePageVisible}
+                    />
+                  ))}
                 </div>
               )}
-            </div>
-          }
-        >
-          {numPages && (
-            <div className="flex flex-col space-y-4 sm:space-y-6 pb-32 max-w-full items-center">
-              {Array.from(new Array(numPages), (_, index) => (
-                <LazyPDFPage
-                  key={`page_${index + 1}`}
-                  pageNumber={index + 1}
-                  width={effectivePageWidth}
-                  onVisible={handlePageVisible}
-                />
-              ))}
-            </div>
-          )}
-        </Document>
+            </Document>
 
-        {/* Bottom Floating Navigation Bar */}
-        {numPages && (
-          <div className="fixed bottom-3 sm:bottom-6 left-1/2 -translate-x-1/2 bg-stone-900/95 backdrop-blur-md border border-stone-800 px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-full flex items-center space-x-3 sm:space-x-5 shadow-2xl z-30 text-white select-none">
-            <button
-              onClick={handlePrevPage}
-              disabled={pageNumber <= 1}
-              className="p-1.5 sm:p-2 hover:bg-stone-800 disabled:opacity-30 disabled:hover:bg-transparent rounded-full transition-all min-w-[36px] min-h-[36px] flex items-center justify-center"
-              aria-label="Previous Page"
-              title="Previous Page"
-              type="button"
-            >
-              <ChevronLeft size={20} />
-            </button>
-            
-            <div className="flex items-center space-x-1.5 text-xs font-semibold text-stone-300">
-              <input
-                type="text"
-                value={inputPage}
-                onChange={(e) => setInputPage(e.target.value)}
-                onBlur={handlePageJump}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    handlePageJump();
-                  }
-                }}
-                className="w-10 sm:w-11 bg-stone-800 border border-stone-700 focus:border-brand-500 focus:outline-none rounded-lg py-1 text-center text-white text-xs font-bold"
-              />
-              <span className="text-stone-500 font-bold">/</span>
-              <span className="font-bold">{numPages}</span>
-            </div>
+            {/* Bottom Floating Navigation Bar for PDF */}
+            {numPages && (
+              <div className="fixed bottom-3 sm:bottom-6 left-1/2 -translate-x-1/2 bg-stone-900/95 backdrop-blur-md border border-stone-800 px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-full flex items-center space-x-3 sm:space-x-5 shadow-2xl z-30 text-white select-none">
+                <button
+                  onClick={handlePrevPage}
+                  disabled={pageNumber <= 1}
+                  className="p-1.5 sm:p-2 hover:bg-stone-800 disabled:opacity-30 disabled:hover:bg-transparent rounded-full transition-all min-w-[36px] min-h-[36px] flex items-center justify-center"
+                  aria-label="Previous Page"
+                  title="Previous Page"
+                  type="button"
+                >
+                  <ChevronLeft size={20} />
+                </button>
+                
+                <div className="flex items-center space-x-1.5 text-xs font-semibold text-stone-300">
+                  <input
+                    type="text"
+                    value={inputPage}
+                    onChange={(e) => setInputPage(e.target.value)}
+                    onBlur={handlePageJump}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handlePageJump();
+                      }
+                    }}
+                    className="w-10 sm:w-11 bg-stone-800 border border-stone-700 focus:border-brand-500 focus:outline-none rounded-lg py-1 text-center text-white text-xs font-bold"
+                  />
+                  <span className="text-stone-500 font-bold">/</span>
+                  <span className="font-bold">{numPages}</span>
+                </div>
 
-            <button
-              onClick={handleNextPage}
-              disabled={pageNumber >= numPages}
-              className="p-1.5 sm:p-2 hover:bg-stone-800 disabled:opacity-30 disabled:hover:bg-transparent rounded-full transition-all min-w-[36px] min-h-[36px] flex items-center justify-center"
-              aria-label="Next Page"
-              title="Next Page"
-              type="button"
-            >
-              <ChevronRight size={20} />
-            </button>
+                <button
+                  onClick={handleNextPage}
+                  disabled={pageNumber >= numPages}
+                  className="p-1.5 sm:p-2 hover:bg-stone-800 disabled:opacity-30 disabled:hover:bg-transparent rounded-full transition-all min-w-[36px] min-h-[36px] flex items-center justify-center"
+                  aria-label="Next Page"
+                  title="Next Page"
+                  type="button"
+                >
+                  <ChevronRight size={20} />
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -647,4 +735,5 @@ export const PDFReader: React.FC = () => {
   );
 };
 
+export const BookReader = PDFReader;
 export default PDFReader;

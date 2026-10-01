@@ -43,6 +43,7 @@ func RegisterRoutes(mux *http.ServeMux, h *Handler, jwtSecret string) {
 	mux.HandleFunc("GET /api/books/{id}", h.GetBook)
 	mux.HandleFunc("GET /api/books/{id}/read", h.ReadBook)
 	mux.HandleFunc("GET /api/books/{id}/pdf", h.StreamPDF)
+	mux.HandleFunc("GET /api/books/{id}/epub", h.StreamEPUB)
 	mux.HandleFunc("GET /api/categories", h.ListCategories)
 	mux.HandleFunc("GET /api/languages", h.ListLanguages)
 	mux.HandleFunc("GET /api/authors", h.ListAuthors)
@@ -66,6 +67,8 @@ func RegisterRoutes(mux *http.ServeMux, h *Handler, jwtSecret string) {
 	mux.Handle("POST /api/admin/books/{id}/unpublish", authMiddleware(http.HandlerFunc(h.UnpublishBook)))
 	mux.Handle("POST /api/admin/books/{id}/upload-cover", authMiddleware(http.HandlerFunc(h.UploadCover)))
 	mux.Handle("POST /api/admin/books/{id}/upload-pdf", authMiddleware(http.HandlerFunc(h.UploadPDF)))
+	mux.Handle("POST /api/admin/books/{id}/upload-epub", authMiddleware(http.HandlerFunc(h.UploadEPUB)))
+	mux.Handle("POST /api/admin/books/{id}/upload-book", authMiddleware(http.HandlerFunc(h.UploadBookFile)))
 	mux.Handle("GET /api/admin/analytics", authMiddleware(http.HandlerFunc(h.GetAnalytics)))
 }
 
@@ -182,8 +185,11 @@ func (h *Handler) ReadBook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if book.PDFObjectKey == nil || *book.PDFObjectKey == "" {
-		respondError(w, http.StatusNotFound, "PDF_NOT_UPLOADED", "PDF has not been uploaded for this book yet")
+	hasPDF := book.PDFObjectKey != nil && *book.PDFObjectKey != ""
+	hasEPUB := book.EPUBObjectKey != nil && *book.EPUBObjectKey != ""
+
+	if !hasPDF && !hasEPUB {
+		respondError(w, http.StatusNotFound, "BOOK_FILE_NOT_UPLOADED", "No reading document (PDF or EPUB) has been uploaded for this book yet")
 		return
 	}
 
@@ -191,16 +197,38 @@ func (h *Handler) ReadBook(w http.ResponseWriter, r *http.Request) {
 	ipHash := getIPHash(r)
 	_ = h.repo.IncrementReadCount(r.Context(), id, ipHash)
 
-	// Generate signed URL valid for 1 hour
-	signedURL, err := h.store.GetSignedURL(r.Context(), *book.PDFObjectKey, 1*time.Hour)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "STORAGE_ERROR", err.Error())
-		return
+	res := map[string]interface{}{
+		"has_pdf":  hasPDF,
+		"has_epub": hasEPUB,
 	}
 
-	respondJSON(w, http.StatusOK, map[string]string{
-		"url": signedURL,
-	})
+	var primaryURL string
+	var primaryFormat string
+
+	if hasEPUB {
+		signedEPUB, err := h.store.GetSignedURL(r.Context(), *book.EPUBObjectKey, 1*time.Hour)
+		if err == nil {
+			res["epub_url"] = signedEPUB
+			primaryURL = signedEPUB
+			primaryFormat = "epub"
+		}
+	}
+
+	if hasPDF {
+		signedPDF, err := h.store.GetSignedURL(r.Context(), *book.PDFObjectKey, 1*time.Hour)
+		if err == nil {
+			res["pdf_url"] = signedPDF
+			if primaryURL == "" {
+				primaryURL = signedPDF
+				primaryFormat = "pdf"
+			}
+		}
+	}
+
+	res["url"] = primaryURL
+	res["format"] = primaryFormat
+
+	respondJSON(w, http.StatusOK, res)
 }
 
 func (h *Handler) ListCategories(w http.ResponseWriter, r *http.Request) {
@@ -451,6 +479,9 @@ func (h *Handler) DeleteBook(w http.ResponseWriter, r *http.Request) {
 		if book.PDFObjectKey != nil {
 			_ = h.store.DeleteFile(ctx, *book.PDFObjectKey)
 		}
+		if book.EPUBObjectKey != nil {
+			_ = h.store.DeleteFile(ctx, *book.EPUBObjectKey)
+		}
 	}()
 
 	respondJSON(w, http.StatusOK, "Book metadata and files deleted successfully")
@@ -568,7 +599,7 @@ func (h *Handler) UploadCover(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.repo.UpdateBookFiles(r.Context(), id, &key, nil)
+	err = h.repo.UpdateBookFiles(r.Context(), id, &key, nil, nil)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
 		return
@@ -612,7 +643,7 @@ func (h *Handler) UploadPDF(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.repo.UpdateBookFiles(r.Context(), id, nil, &key)
+	err = h.repo.UpdateBookFiles(r.Context(), id, nil, &key, nil)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
 		return
@@ -620,7 +651,118 @@ func (h *Handler) UploadPDF(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, map[string]string{
 		"pdf_key": key,
+		"format":  "pdf",
 	})
+}
+
+func (h *Handler) UploadEPUB(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	// Limit request size to 50MB for books
+	r.Body = http.MaxBytesReader(w, r.Body, 50<<20)
+
+	err := r.ParseMultipartForm(50 << 20)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "FILE_TOO_LARGE", "EPUB file exceeds the maximum limit of 50MB")
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "INVALID_FILE", "Could not find file in request parameters")
+		return
+	}
+	defer file.Close()
+
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	if ext != ".epub" {
+		respondError(w, http.StatusBadRequest, "INVALID_FILE_TYPE", "Supported book format is strictly EPUB (.epub)")
+		return
+	}
+
+	key := "books/" + id + ".epub"
+
+	err = h.store.UploadFile(r.Context(), key, file)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "STORAGE_ERROR", err.Error())
+		return
+	}
+
+	err = h.repo.UpdateBookFiles(r.Context(), id, nil, nil, &key)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{
+		"epub_key": key,
+		"format":   "epub",
+	})
+}
+
+func (h *Handler) UploadBookFile(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	// Limit request size to 50MB for books
+	r.Body = http.MaxBytesReader(w, r.Body, 50<<20)
+
+	err := r.ParseMultipartForm(50 << 20)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "FILE_TOO_LARGE", "Book file exceeds the maximum limit of 50MB")
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "INVALID_FILE", "Could not find file in request parameters")
+		return
+	}
+	defer file.Close()
+
+	ext := strings.ToLower(filepath.Ext(header.Filename))
+	if ext != ".pdf" && ext != ".epub" {
+		respondError(w, http.StatusBadRequest, "INVALID_FILE_TYPE", "Supported book formats are PDF (.pdf) and EPUB (.epub)")
+		return
+	}
+
+	var key string
+	var pdfKey, epubKey *string
+	format := ""
+
+	if ext == ".pdf" {
+		key = "books/" + id + ".pdf"
+		pdfKey = &key
+		format = "pdf"
+	} else {
+		key = "books/" + id + ".epub"
+		epubKey = &key
+		format = "epub"
+	}
+
+	err = h.store.UploadFile(r.Context(), key, file)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "STORAGE_ERROR", err.Error())
+		return
+	}
+
+	err = h.repo.UpdateBookFiles(r.Context(), id, nil, pdfKey, epubKey)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
+		return
+	}
+
+	res := map[string]string{
+		"key":    key,
+		"format": format,
+	}
+	if pdfKey != nil {
+		res["pdf_key"] = *pdfKey
+	}
+	if epubKey != nil {
+		res["epub_key"] = *epubKey
+	}
+
+	respondJSON(w, http.StatusOK, res)
 }
 
 func (h *Handler) GetAnalytics(w http.ResponseWriter, r *http.Request) {
@@ -680,6 +822,60 @@ func (h *Handler) StreamPDF(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", "inline")
+	w.Header().Set("Cache-Control", "private, max-age=3600")
+
+	_, _ = io.Copy(w, resp.Body)
+}
+
+func (h *Handler) StreamEPUB(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	book, err := h.repo.GetBookByID(r.Context(), id)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
+		return
+	}
+	if book == nil || !book.Published {
+		respondError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "Book not found or unavailable")
+		return
+	}
+
+	if book.EPUBObjectKey == nil || *book.EPUBObjectKey == "" {
+		respondError(w, http.StatusNotFound, "EPUB_NOT_UPLOADED", "EPUB has not been uploaded for this book yet")
+		return
+	}
+
+	// 1. If using local storage, serve file directly from disk
+	if h.storageDir != "" {
+		path := filepath.Join(h.storageDir, *book.EPUBObjectKey)
+		if _, err := os.Stat(path); err == nil {
+			w.Header().Set("Content-Type", "application/epub+zip")
+			w.Header().Set("Content-Disposition", "inline")
+			http.ServeFile(w, r, path)
+			return
+		}
+	}
+
+	// 2. If using Cloudflare R2, generate a signed URL and proxy the file streaming
+	signedURL, err := h.store.GetSignedURL(r.Context(), *book.EPUBObjectKey, 5*time.Minute)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "STORAGE_ERROR", err.Error())
+		return
+	}
+
+	resp, err := http.Get(signedURL)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "STREAM_ERROR", err.Error())
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respondError(w, http.StatusInternalServerError, "STREAM_ERROR", "Failed to retrieve EPUB from storage server")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/epub+zip")
 	w.Header().Set("Content-Disposition", "inline")
 	w.Header().Set("Cache-Control", "private, max-age=3600")
 

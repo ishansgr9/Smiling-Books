@@ -82,14 +82,19 @@ Returns details for a specific published book.
 ---
 
 ### `GET /api/books/{id}/read`
-Logs a reading event (anonymous analytics) and returns a 1-hour pre-signed or local stream URL.
+Logs a reading event (anonymous analytics) and returns a 1-hour pre-signed or local stream URL for both PDF and EPUB formats.
 
 #### Response
 ```json
 {
   "success": true,
   "data": {
-    "url": "http://localhost:8080/api/books/c6a2b8e4-1234-4567-89ab-cdef01234567/pdf"
+    "url": "http://localhost:8080/api/books/c6a2b8e4-1234-4567-89ab-cdef01234567/epub",
+    "format": "epub",
+    "has_pdf": true,
+    "has_epub": true,
+    "pdf_url": "http://localhost:8080/api/books/c6a2b8e4-1234-4567-89ab-cdef01234567/pdf",
+    "epub_url": "http://localhost:8080/api/books/c6a2b8e4-1234-4567-89ab-cdef01234567/epub"
   }
 }
 ```
@@ -97,7 +102,12 @@ Logs a reading event (anonymous analytics) and returns a 1-hour pre-signed or lo
 ---
 
 ### `GET /api/books/{id}/pdf`
-Proxies the raw PDF binary stream directly to PDF.js readers.
+Proxies the raw PDF binary stream (`application/pdf`) directly to the PDF reader.
+
+---
+
+### `GET /api/books/{id}/epub`
+Proxies the raw EPUB binary stream (`application/epub+zip`) directly to the EPUB reader.
 
 ---
 
@@ -212,6 +222,16 @@ Uploads cover image file (`multipart/form-data`, file field: `file`). Valid form
 
 ### `POST /api/admin/books/{id}/upload-pdf`
 Uploads PDF document file (`multipart/form-data`, file field: `file`). Valid formats: `.pdf` (Max size: 50MB).
+
+---
+
+### `POST /api/admin/books/{id}/upload-epub`
+Uploads EPUB document file (`multipart/form-data`, file field: `file`). Valid formats: `.epub` (Max size: 50MB).
+
+---
+
+### `POST /api/admin/books/{id}/upload-book`
+Uploads either a PDF or EPUB document file (`multipart/form-data`, file field: `file`). Valid formats: `.pdf`, `.epub` (Max size: 50MB).
 
 ---
 

@@ -17,7 +17,7 @@ type BookRepository interface {
 	CreateBook(ctx context.Context, req *models.BookRequest) (*models.Book, error)
 	UpdateBook(ctx context.Context, id string, req *models.BookRequest) (*models.Book, error)
 	DeleteBook(ctx context.Context, id string) error
-	UpdateBookFiles(ctx context.Context, id string, coverKey, pdfKey *string) error
+	UpdateBookFiles(ctx context.Context, id string, coverKey, pdfKey, epubKey *string) error
 	IncrementReadCount(ctx context.Context, id string, ipHash string) error
 
 	GetCategories(ctx context.Context) ([]models.Category, error)
@@ -161,7 +161,7 @@ func (r *PostgresBookRepository) GetBooks(ctx context.Context, q string, categor
 
 	query := fmt.Sprintf(`
 		SELECT b.id, b.title, b.description, b.age_group, b.publication_year, 
-		       b.cover_object_key, b.pdf_object_key, b.rights_status, b.published,
+		       b.cover_object_key, b.pdf_object_key, b.epub_object_key, b.rights_status, b.published,
 		       b.created_at, b.updated_at,
 		       a.id, a.name, c.id, c.name, l.id, l.name
 		FROM books b
@@ -185,7 +185,7 @@ func (r *PostgresBookRepository) GetBooks(ctx context.Context, q string, categor
 		var b models.Book
 		err = rows.Scan(
 			&b.ID, &b.Title, &b.Description, &b.AgeGroup, &b.PublicationYear,
-			&b.CoverObjectKey, &b.PDFObjectKey, &b.RightsStatus, &b.Published,
+			&b.CoverObjectKey, &b.PDFObjectKey, &b.EPUBObjectKey, &b.RightsStatus, &b.Published,
 			&b.CreatedAt, &b.UpdatedAt,
 			&b.AuthorID, &b.AuthorName,
 			&b.CategoryID, &b.CategoryName,
@@ -203,7 +203,7 @@ func (r *PostgresBookRepository) GetBooks(ctx context.Context, q string, categor
 func (r *PostgresBookRepository) GetBookByID(ctx context.Context, id string) (*models.Book, error) {
 	query := `
 		SELECT b.id, b.title, b.description, b.age_group, b.publication_year, 
-		       b.cover_object_key, b.pdf_object_key, b.rights_status, b.published,
+		       b.cover_object_key, b.pdf_object_key, b.epub_object_key, b.rights_status, b.published,
 		       b.created_at, b.updated_at,
 		       a.id, a.name, c.id, c.name, l.id, l.name
 		FROM books b
@@ -215,7 +215,7 @@ func (r *PostgresBookRepository) GetBookByID(ctx context.Context, id string) (*m
 	var b models.Book
 	err := r.db.QueryRow(ctx, query, id).Scan(
 		&b.ID, &b.Title, &b.Description, &b.AgeGroup, &b.PublicationYear,
-		&b.CoverObjectKey, &b.PDFObjectKey, &b.RightsStatus, &b.Published,
+		&b.CoverObjectKey, &b.PDFObjectKey, &b.EPUBObjectKey, &b.RightsStatus, &b.Published,
 		&b.CreatedAt, &b.UpdatedAt,
 		&b.AuthorID, &b.AuthorName,
 		&b.CategoryID, &b.CategoryName,
@@ -351,25 +351,35 @@ func (r *PostgresBookRepository) DeleteBook(ctx context.Context, id string) erro
 	return nil
 }
 
-func (r *PostgresBookRepository) UpdateBookFiles(ctx context.Context, id string, coverKey, pdfKey *string) error {
-	var query string
-	var arg interface{}
+func (r *PostgresBookRepository) UpdateBookFiles(ctx context.Context, id string, coverKey, pdfKey, epubKey *string) error {
+	setClauses := []string{"updated_at = NOW()"}
+	args := []interface{}{}
+	argIdx := 1
 
-	if coverKey != nil && pdfKey != nil {
-		query = "UPDATE books SET cover_object_key = $1, pdf_object_key = $2, updated_at = NOW() WHERE id = $3"
-		_, err := r.db.Exec(ctx, query, *coverKey, *pdfKey, id)
-		return err
-	} else if coverKey != nil {
-		query = "UPDATE books SET cover_object_key = $1, updated_at = NOW() WHERE id = $2"
-		arg = *coverKey
-	} else if pdfKey != nil {
-		query = "UPDATE books SET pdf_object_key = $1, updated_at = NOW() WHERE id = $2"
-		arg = *pdfKey
-	} else {
+	if coverKey != nil {
+		setClauses = append(setClauses, fmt.Sprintf("cover_object_key = $%d", argIdx))
+		args = append(args, *coverKey)
+		argIdx++
+	}
+	if pdfKey != nil {
+		setClauses = append(setClauses, fmt.Sprintf("pdf_object_key = $%d", argIdx))
+		args = append(args, *pdfKey)
+		argIdx++
+	}
+	if epubKey != nil {
+		setClauses = append(setClauses, fmt.Sprintf("epub_object_key = $%d", argIdx))
+		args = append(args, *epubKey)
+		argIdx++
+	}
+
+	if len(args) == 0 {
 		return nil
 	}
 
-	tag, err := r.db.Exec(ctx, query, arg, id)
+	args = append(args, id)
+	query := fmt.Sprintf("UPDATE books SET %s WHERE id = $%d", strings.Join(setClauses, ", "), argIdx)
+
+	tag, err := r.db.Exec(ctx, query, args...)
 	if err != nil {
 		return err
 	}

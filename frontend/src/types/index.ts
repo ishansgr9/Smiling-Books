@@ -28,6 +28,7 @@ export interface Book {
   cover_object_key: string | null;
   cover_url: string | null;
   pdf_object_key: string | null;
+  epub_object_key: string | null;
   rights_status: 'PUBLIC_DOMAIN' | 'LICENSED' | 'PERMISSION_GRANTED' | 'PENDING_REVIEW';
   published: boolean;
   created_at: string;

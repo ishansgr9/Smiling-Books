@@ -29,6 +29,10 @@ export const AdminBookForm: React.FC = () => {
   const [pdfUploading, setPdfUploading] = useState(false);
   const [pdfUploadedKey, setPdfUploadedKey] = useState<string | null>(null);
 
+  const [epubFile, setEpubFile] = useState<File | null>(null);
+  const [epubUploading, setEpubUploading] = useState(false);
+  const [epubUploadedKey, setEpubUploadedKey] = useState<string | null>(null);
+
   // Lifecycle states
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -54,6 +58,7 @@ export const AdminBookForm: React.FC = () => {
         setPublished(book.published);
         setCoverUploadedKey(book.cover_object_key);
         setPdfUploadedKey(book.pdf_object_key);
+        setEpubUploadedKey(book.epub_object_key);
       } catch (e: any) {
         console.error('Failed to load book for editing:', e);
         setError(e.message || 'Could not load book details.');
@@ -146,6 +151,24 @@ export const AdminBookForm: React.FC = () => {
       setError(e.message || 'PDF upload failed.');
     } finally {
       setPdfUploading(false);
+    }
+  };
+
+  // Upload EPUB Action
+  const handleEPUBUpload = async () => {
+    if (!epubFile || !id) return;
+    setEpubUploading(true);
+    setError(null);
+    try {
+      const res = await api.uploadFile<{ epub_key: string }>(`/api/admin/books/${id}/upload-epub`, epubFile);
+      setEpubUploadedKey(res.epub_key);
+      setEpubFile(null);
+      alert('Book EPUB document uploaded successfully!');
+    } catch (e: any) {
+      console.error('EPUB upload error:', e);
+      setError(e.message || 'EPUB upload failed.');
+    } finally {
+      setEpubUploading(false);
     }
   };
 
@@ -385,7 +408,7 @@ export const AdminBookForm: React.FC = () => {
 
           {!isEditMode ? (
             <div className="bg-stone-50 border border-dashed border-stone-200 rounded-2xl p-6 text-center text-stone-400 text-xs leading-relaxed">
-              <p>You must save the book metadata first before you can upload the cover image and book PDF document.</p>
+              <p>You must save the book metadata first before you can upload the cover image and book files (PDF / EPUB).</p>
             </div>
           ) : (
             <div className="space-y-8">
@@ -395,9 +418,9 @@ export const AdminBookForm: React.FC = () => {
                 <label className="block text-xs font-semibold text-stone-500 uppercase tracking-wider">
                   Cover Image (.jpg, .png, .webp)
                 </label>
-                <div className="flex items-center space-x-1">
+                <div className="flex items-center space-x-1.5">
                   <span className={`w-2 h-2 rounded-full ${coverUploadedKey ? 'bg-emerald-500' : 'bg-red-400 animate-pulse'}`} />
-                  <span className="text-[10px] text-stone-400 font-semibold uppercase tracking-wider">
+                  <span className="text-[10px] text-stone-500 font-semibold uppercase tracking-wider">
                     {coverUploadedKey ? 'Cover Uploaded' : 'Cover Missing'}
                   </span>
                 </div>
@@ -428,14 +451,19 @@ export const AdminBookForm: React.FC = () => {
               </div>
 
               {/* PDF Document Upload */}
-              <div className="space-y-3">
-                <label className="block text-xs font-semibold text-stone-500 uppercase tracking-wider">
-                  Book Text Document (.pdf)
-                </label>
-                <div className="flex items-center space-x-1">
-                  <span className={`w-2 h-2 rounded-full ${pdfUploadedKey ? 'bg-emerald-500' : 'bg-red-400 animate-pulse'}`} />
-                  <span className="text-[10px] text-stone-400 font-semibold uppercase tracking-wider">
-                    {pdfUploadedKey ? 'PDF Uploaded' : 'PDF Missing'}
+              <div className="space-y-3 pt-2 border-t border-stone-100">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-stone-500 uppercase tracking-wider">
+                    PDF Document (.pdf)
+                  </label>
+                  <span className="text-[10px] bg-red-50 text-red-700 font-bold px-1.5 py-0.5 rounded border border-red-100">
+                    PDF
+                  </span>
+                </div>
+                <div className="flex items-center space-x-1.5">
+                  <span className={`w-2 h-2 rounded-full ${pdfUploadedKey ? 'bg-emerald-500' : 'bg-stone-300'}`} />
+                  <span className="text-[10px] text-stone-500 font-semibold uppercase tracking-wider">
+                    {pdfUploadedKey ? 'PDF Uploaded' : 'Not Uploaded'}
                   </span>
                 </div>
 
@@ -464,11 +492,66 @@ export const AdminBookForm: React.FC = () => {
                 </div>
               </div>
 
+              {/* EPUB Document Upload */}
+              <div className="space-y-3 pt-2 border-t border-stone-100">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-stone-500 uppercase tracking-wider">
+                    EPUB Document (.epub)
+                  </label>
+                  <span className="text-[10px] bg-purple-50 text-purple-700 font-bold px-1.5 py-0.5 rounded border border-purple-100">
+                    EPUB
+                  </span>
+                </div>
+                <div className="flex items-center space-x-1.5">
+                  <span className={`w-2 h-2 rounded-full ${epubUploadedKey ? 'bg-emerald-500' : 'bg-stone-300'}`} />
+                  <span className="text-[10px] text-stone-500 font-semibold uppercase tracking-wider">
+                    {epubUploadedKey ? 'EPUB Uploaded' : 'Not Uploaded'}
+                  </span>
+                </div>
+
+                <div className="space-y-2">
+                  <input
+                    type="file"
+                    accept=".epub"
+                    onChange={(e) => setEpubFile(e.target.files?.[0] || null)}
+                    className="block w-full text-xs text-stone-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-[10px] file:font-semibold file:bg-stone-100 file:text-stone-700 hover:file:bg-stone-200 file:cursor-pointer cursor-pointer"
+                  />
+                  {epubFile && (
+                    <button
+                      onClick={handleEPUBUpload}
+                      disabled={epubUploading}
+                      className="flex items-center space-x-1.5 w-full justify-center py-2 bg-stone-900 hover:bg-stone-800 text-white font-bold text-xs rounded-xl shadow transition-all disabled:opacity-70"
+                      type="button"
+                    >
+                      {epubUploading ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : (
+                        <FileText size={12} />
+                      )}
+                      <span>Upload EPUB Document</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Upload Status Summary */}
+              <div className="p-3 bg-stone-50 border border-stone-200/50 rounded-xl space-y-1.5 text-xs text-stone-600">
+                <p className="font-bold text-[11px] text-stone-700">Supported Formats:</p>
+                <div className="flex items-center gap-2">
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${pdfUploadedKey ? 'bg-emerald-100 text-emerald-800' : 'bg-stone-200 text-stone-500'}`}>
+                    PDF: {pdfUploadedKey ? 'Ready' : 'None'}
+                  </span>
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${epubUploadedKey ? 'bg-purple-100 text-purple-800' : 'bg-stone-200 text-stone-500'}`}>
+                    EPUB: {epubUploadedKey ? 'Ready' : 'None'}
+                  </span>
+                </div>
+              </div>
+
               {/* Rights Status Check info */}
               <div className="bg-emerald-50/40 p-4 border border-emerald-200/50 rounded-xl text-emerald-800 flex items-start space-x-2.5">
                 <ShieldCheck size={16} className="shrink-0 mt-0.5" />
                 <p className="text-[10px] leading-relaxed">
-                  Upload files directly to secure Cloudflare R2 object storage buckets. Ensure PDFs do not exceed 50MB and are fully clean and readable.
+                  Upload files directly to secure Cloudflare R2 object storage buckets. Ensure PDF and EPUB files do not exceed 50MB and are fully clean and readable.
                 </p>
               </div>
 

@@ -43,6 +43,7 @@ type Book struct {
 	CoverObjectKey  *string    `json:"cover_object_key"`
 	CoverURL        *string    `json:"cover_url"` // Pre-signed/Public URL for the frontend
 	PDFObjectKey    *string    `json:"pdf_object_key"`
+	EPUBObjectKey   *string    `json:"epub_object_key"`
 	RightsStatus    string     `json:"rights_status"` // PUBLIC_DOMAIN, LICENSED, PERMISSION_GRANTED, PENDING_REVIEW
 	Published       bool       `json:"published"`
 	CreatedAt       time.Time  `json:"created_at"`

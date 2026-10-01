@@ -33,7 +33,7 @@ func (m *mockBookRepository) UpdateBook(ctx context.Context, id string, req *mod
 func (m *mockBookRepository) DeleteBook(ctx context.Context, id string) error {
 	return nil
 }
-func (m *mockBookRepository) UpdateBookFiles(ctx context.Context, id string, coverKey, pdfKey *string) error {
+func (m *mockBookRepository) UpdateBookFiles(ctx context.Context, id string, coverKey, pdfKey, epubKey *string) error {
 	return nil
 }
 func (m *mockBookRepository) IncrementReadCount(ctx context.Context, id string, ipHash string) error {
@@ -154,5 +154,25 @@ func TestIPAddressHashing(t *testing.T) {
 	hash3 := getIPHash(req3)
 	if hash1 == hash3 {
 		t.Error("Expected different IP addresses to produce different hashes, but they were identical")
+	}
+}
+
+func TestEpubAndPdfMIMETypes(t *testing.T) {
+	cases := []struct {
+		filename string
+		expected bool
+	}{
+		{"book.pdf", true},
+		{"novel.epub", true},
+		{"document.docx", false},
+		{"script.exe", false},
+	}
+
+	for _, tc := range cases {
+		ext := strings.ToLower(tc.filename[strings.LastIndex(tc.filename, "."):])
+		isValid := ext == ".pdf" || ext == ".epub"
+		if isValid != tc.expected {
+			t.Errorf("Filename %s: expected valid=%v, got %v", tc.filename, tc.expected, isValid)
+		}
 	}
 }

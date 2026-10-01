@@ -180,6 +180,16 @@ export const BookDetails: React.FC = () => {
                 <Scale size={12} />
                 <span>{getRightsText(book.rights_status)}</span>
               </span>
+              {book.pdf_object_key && (
+                <span className="px-3 py-1 bg-red-50 text-red-700 border border-red-200/60 text-xs font-semibold rounded-full">
+                  PDF Available
+                </span>
+              )}
+              {book.epub_object_key && (
+                <span className="px-3 py-1 bg-purple-50 text-purple-700 border border-purple-200/60 text-xs font-semibold rounded-full">
+                  EPUB Available
+                </span>
+              )}
             </div>
 
             {/* Description */}

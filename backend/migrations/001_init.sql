@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS books (
     publication_year INT,
     cover_object_key VARCHAR(500),
     pdf_object_key VARCHAR(500),
+    epub_object_key VARCHAR(500),
     rights_status VARCHAR(50) NOT NULL DEFAULT 'PENDING_REVIEW',
     published BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,

@@ -148,6 +148,18 @@ export const AdminBooks: React.FC = () => {
                         <p className="text-xs text-stone-500 font-medium truncate">By {book.author_name}</p>
                         <div className="flex items-center space-x-2 mt-1">
                           <span className="text-[10px] text-stone-400">{book.category_name} • {book.language_name}</span>
+                          <div className="flex items-center gap-1">
+                            {book.pdf_object_key && (
+                              <span className="px-1 py-0.2 rounded text-[8px] font-extrabold bg-red-50 text-red-700 border border-red-200">
+                                PDF
+                              </span>
+                            )}
+                            {book.epub_object_key && (
+                              <span className="px-1 py-0.2 rounded text-[8px] font-extrabold bg-purple-50 text-purple-700 border border-purple-200">
+                                EPUB
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -269,10 +281,23 @@ export const AdminBooks: React.FC = () => {
                         </button>
                       </td>
 
-                      {/* PDF File uploaded indicator */}
+                      {/* File uploaded indicator (PDF / EPUB) */}
                       <td className="px-6 py-4 text-center">
-                        <span className={`inline-block w-2.5 h-2.5 rounded-full ${book.pdf_object_key ? 'bg-emerald-500' : 'bg-red-400 animate-pulse'
-                          }`} title={book.pdf_object_key ? 'PDF Uploaded' : 'PDF Missing'} />
+                        <div className="flex items-center justify-center gap-1.5">
+                          {book.pdf_object_key ? (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-red-50 text-red-700 border border-red-200" title="PDF Document Ready">
+                              PDF
+                            </span>
+                          ) : null}
+                          {book.epub_object_key ? (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-purple-50 text-purple-700 border border-purple-200" title="EPUB Document Ready">
+                              EPUB
+                            </span>
+                          ) : null}
+                          {!book.pdf_object_key && !book.epub_object_key ? (
+                            <span className="inline-block w-2.5 h-2.5 rounded-full bg-red-400 animate-pulse" title="No document file uploaded" />
+                          ) : null}
+                        </div>
                       </td>
 
                       {/* Actions */}

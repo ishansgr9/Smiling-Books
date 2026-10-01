@@ -61,6 +61,8 @@ func getMIMEType(key string) string {
 	switch ext {
 	case ".pdf":
 		return "application/pdf"
+	case ".epub":
+		return "application/epub+zip"
 	case ".png":
 		return "image/png"
 	case ".jpg", ".jpeg":
