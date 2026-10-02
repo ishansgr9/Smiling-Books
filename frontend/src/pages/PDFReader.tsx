@@ -226,7 +226,10 @@ export const PDFReader: React.FC = () => {
           setPdfURL(readData.pdf_url || `${apiBaseUrl}/api/books/${id}/pdf`);
         }
         if (epubExists) {
-          setEpubURL(readData.epub_url || `${apiBaseUrl}/api/books/${id}/epub`);
+          // Always use the backend proxy for EPUB — signed cloud storage URLs (GCS/S3)
+          // block cross-origin fetch() requests (CORS). Our backend proxy route
+          // passes through our CORS middleware which correctly sets Allow-Origin headers.
+          setEpubURL(`${apiBaseUrl}/api/books/${id}/epub`);
         }
 
         // Determine default format: EPUB preferred if available, or PDF
