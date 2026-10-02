@@ -223,10 +223,10 @@ export const PDFReader: React.FC = () => {
 
         const apiBaseUrl = getApiBaseUrl();
         if (pdfExists) {
-          setPdfURL(`${apiBaseUrl}/api/books/${id}/pdf`);
+          setPdfURL(readData.pdf_url || `${apiBaseUrl}/api/books/${id}/pdf`);
         }
         if (epubExists) {
-          setEpubURL(`${apiBaseUrl}/api/books/${id}/epub`);
+          setEpubURL(readData.epub_url || `${apiBaseUrl}/api/books/${id}/epub`);
         }
 
         // Determine default format: EPUB preferred if available, or PDF

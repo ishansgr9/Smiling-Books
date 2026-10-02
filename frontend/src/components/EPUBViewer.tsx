@@ -10,7 +10,8 @@ import {
   Sun,
   Moon,
   Bookmark,
-  X
+  X,
+  RotateCcw
 } from 'lucide-react';
 
 interface EPUBViewerProps {
@@ -27,6 +28,7 @@ export const EPUBViewer: React.FC<EPUBViewerProps> = ({ url, bookTitle }) => {
   const bookRef = useRef<EPubBookInstance | null>(null);
 
   const [loading, setLoading] = useState(true);
+  const [loadingStatus, setLoadingStatus] = useState<string>('Connecting to book service...');
   const [error, setError] = useState<string | null>(null);
 
   // Reader state
@@ -37,137 +39,176 @@ export const EPUBViewer: React.FC<EPUBViewerProps> = ({ url, bookTitle }) => {
   const [currentLocationText, setCurrentLocationText] = useState<string>('');
   const [progressPercent, setProgressPercent] = useState<number>(0);
   const [currentChapter, setCurrentChapter] = useState<string>('');
+  const [retryCount, setRetryCount] = useState<number>(0);
 
   // Touch Swipe tracking
   const touchStartX = useRef<number | null>(null);
   const touchStartY = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!viewerRef.current || !url) return;
-
     let isMounted = true;
-    setLoading(true);
-    setError(null);
+    let localBook: EPubBookInstance | null = null;
+    let localRendition: Rendition | null = null;
 
-    // Initialize epub.js book instance
-    const book = ePub(url);
-    bookRef.current = book;
+    const loadBook = async () => {
+      if (!viewerRef.current || !url) return;
 
-    const rendition = book.renderTo(viewerRef.current, {
-      width: '100%',
-      height: '100%',
-      flow: 'paginated',
-      spread: 'auto',
-      allowScriptedContent: false,
-    });
-    renditionRef.current = rendition;
+      setLoading(true);
+      setError(null);
+      setLoadingStatus('Downloading EPUB publication...');
 
-    // Register theme styles
-    rendition.themes.register('dark', {
-      body: {
-        background: '#0c0a09 !important',
-        color: '#e7e5e4 !important',
-        'font-family': 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important',
-        'line-height': '1.8 !important',
-        padding: '0 20px !important',
-      },
-      'a, a:visited': { color: '#fb923c !important' },
-      'h1, h2, h3, h4': { color: '#fafaf9 !important', 'font-family': 'serif !important' },
-      p: { 'margin-bottom': '1.2em !important' },
-    });
-
-    rendition.themes.register('light', {
-      body: {
-        background: '#ffffff !important',
-        color: '#1c1917 !important',
-        'font-family': 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important',
-        'line-height': '1.8 !important',
-        padding: '0 20px !important',
-      },
-      'a, a:visited': { color: '#ea580c !important' },
-      'h1, h2, h3, h4': { color: '#0c0a09 !important', 'font-family': 'serif !important' },
-      p: { 'margin-bottom': '1.2em !important' },
-    });
-
-    rendition.themes.register('sepia', {
-      body: {
-        background: '#fef3c7 !important',
-        color: '#451a03 !important',
-        'font-family': 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important',
-        'line-height': '1.8 !important',
-        padding: '0 20px !important',
-      },
-      'a, a:visited': { color: '#b45309 !important' },
-      'h1, h2, h3, h4': { color: '#292524 !important', 'font-family': 'serif !important' },
-      p: { 'margin-bottom': '1.2em !important' },
-    });
-
-    rendition.themes.select(theme);
-    rendition.themes.fontSize(`${fontSize}%`);
-
-    // Load navigation (Table of Contents)
-    book.loaded.navigation
-      .then((nav) => {
-        if (isMounted) {
-          setToc(nav.toc || []);
+      try {
+        // 1. Fetch file directly as ArrayBuffer for fast, reliable, zero-latency zip decompression
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`Failed to load file (HTTP ${response.status}: ${response.statusText})`);
         }
-      })
-      .catch((err) => {
-        console.warn('Navigation could not be parsed:', err);
-      });
 
-    // Display book initial location
-    rendition
-      .display()
-      .then(() => {
-        if (isMounted) {
-          setLoading(false);
-        }
-      })
-      .catch((err) => {
-        if (isMounted) {
-          console.error('Failed to display EPUB:', err);
-          setError(err.message || 'Failed to render the EPUB publication.');
-          setLoading(false);
-        }
-      });
+        const arrayBuffer = await response.arrayBuffer();
+        if (!isMounted) return;
 
-    // Generate location numbers for progress calculation
-    book.ready
-      .then(() => book.locations.generate(1000))
-      .then(() => {
-        if (isMounted && renditionRef.current) {
-          const loc = renditionRef.current.currentLocation?.();
-          if (loc && loc.start) {
-            const percent = book.locations.percentageFromCfi(loc.start.cfi);
-            setProgressPercent(Math.round(percent * 100));
+        setLoadingStatus('Unpacking chapters...');
+
+        // 2. Clear previous contents if any
+        if (viewerRef.current) {
+          viewerRef.current.innerHTML = '';
+        }
+
+        // 3. Instantiate ePub from buffer
+        localBook = ePub(arrayBuffer);
+        bookRef.current = localBook;
+
+        // 4. Render to container
+        localRendition = localBook.renderTo(viewerRef.current, {
+          width: '100%',
+          height: '100%',
+          flow: 'paginated',
+          spread: 'none',
+          allowScriptedContent: false,
+        });
+        renditionRef.current = localRendition;
+
+        // 5. Register theme palettes
+        localRendition.themes.register('dark', {
+          body: {
+            background: '#0c0a09 !important',
+            color: '#e7e5e4 !important',
+            'font-family': 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important',
+            'line-height': '1.8 !important',
+            padding: '0 24px !important',
+          },
+          'a, a:visited': { color: '#fb923c !important' },
+          'h1, h2, h3, h4': { color: '#fafaf9 !important', 'font-family': 'serif !important' },
+          p: { 'margin-bottom': '1.2em !important' },
+          img: { 'max-width': '100% !important', height: 'auto !important' },
+        });
+
+        localRendition.themes.register('light', {
+          body: {
+            background: '#ffffff !important',
+            color: '#1c1917 !important',
+            'font-family': 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important',
+            'line-height': '1.8 !important',
+            padding: '0 24px !important',
+          },
+          'a, a:visited': { color: '#ea580c !important' },
+          'h1, h2, h3, h4': { color: '#0c0a09 !important', 'font-family': 'serif !important' },
+          p: { 'margin-bottom': '1.2em !important' },
+          img: { 'max-width': '100% !important', height: 'auto !important' },
+        });
+
+        localRendition.themes.register('sepia', {
+          body: {
+            background: '#fef3c7 !important',
+            color: '#451a03 !important',
+            'font-family': 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important',
+            'line-height': '1.8 !important',
+            padding: '0 24px !important',
+          },
+          'a, a:visited': { color: '#b45309 !important' },
+          'h1, h2, h3, h4': { color: '#292524 !important', 'font-family': 'serif !important' },
+          p: { 'margin-bottom': '1.2em !important' },
+          img: { 'max-width': '100% !important', height: 'auto !important' },
+        });
+
+        localRendition.themes.select(theme);
+        localRendition.themes.fontSize(`${fontSize}%`);
+
+        setLoadingStatus('Rendering pages...');
+
+        // 6. Display first page immediately without blocking for heavy locations
+        await localRendition.display();
+
+        if (!isMounted) return;
+        setLoading(false);
+
+        // 7. Load Table of Contents asynchronously
+        localBook.loaded.navigation
+          .then((nav) => {
+            if (isMounted) {
+              setToc(nav.toc || []);
+            }
+          })
+          .catch((err) => {
+            console.warn('TOC could not be parsed:', err);
+          });
+
+        // 8. Relocated event listener
+        localRendition.on('relocated', (location: any) => {
+          if (!isMounted) return;
+          if (location && location.start) {
+            const pageInfo = location.start.displayed?.page || location.start.location || '';
+            if (pageInfo) {
+              setCurrentLocationText(`Location ${pageInfo}`);
+            }
+
+            if (bookRef.current?.locations?.percentageFromCfi) {
+              const percent = bookRef.current.locations.percentageFromCfi(location.start.cfi);
+              if (!isNaN(percent)) {
+                setProgressPercent(Math.round(percent * 100));
+              }
+            }
           }
-        }
-      })
-      .catch((e) => console.warn('Location generation note:', e));
+        });
 
-    // Handle location change events
-    rendition.on('relocated', (location: any) => {
-      if (!isMounted) return;
-      if (location && location.start) {
-        setCurrentLocationText(`Location ${location.start.displayed?.page || location.start.location || ''}`);
-        if (book.locations && book.locations.percentageFromCfi) {
-          const percent = book.locations.percentageFromCfi(location.start.cfi);
-          if (!isNaN(percent)) {
-            setProgressPercent(Math.round(percent * 100));
+        // 9. Keyboard listener inside epub iframe
+        localRendition.on('keyup', (e: KeyboardEvent) => {
+          if (e.key === 'ArrowRight') {
+            localRendition?.next();
+          } else if (e.key === 'ArrowLeft') {
+            localRendition?.prev();
           }
-        }
-      }
-    });
+        });
 
-    // Key navigation listener inside rendition iframe
-    rendition.on('keyup', (e: KeyboardEvent) => {
-      if (e.key === 'ArrowRight') {
-        rendition.next();
-      } else if (e.key === 'ArrowLeft') {
-        rendition.prev();
+        // 10. Background non-blocking location generation (delayed so reader opens instantly)
+        setTimeout(() => {
+          if (isMounted && localBook) {
+            localBook.locations
+              .generate(1600)
+              .then(() => {
+                if (isMounted && renditionRef.current) {
+                  const loc = renditionRef.current.currentLocation?.();
+                  if (loc && loc.start && localBook) {
+                    const percent = localBook.locations.percentageFromCfi(loc.start.cfi);
+                    if (!isNaN(percent)) {
+                      setProgressPercent(Math.round(percent * 100));
+                    }
+                  }
+                }
+              })
+              .catch((e) => console.warn('Background location note:', e));
+          }
+        }, 1200);
+
+      } catch (err: any) {
+        if (!isMounted) return;
+        console.error('EPUB rendering failed:', err);
+        setError(err.message || 'Failed to render the EPUB publication.');
+        setLoading(false);
       }
-    });
+    };
+
+    loadBook();
 
     // Resize handler
     const handleResize = () => {
@@ -181,13 +222,13 @@ export const EPUBViewer: React.FC<EPUBViewerProps> = ({ url, bookTitle }) => {
       isMounted = false;
       window.removeEventListener('resize', handleResize);
       try {
-        rendition.destroy();
-        book.destroy();
+        if (localRendition) localRendition.destroy();
+        if (localBook) localBook.destroy();
       } catch (e) {
-        console.warn('Cleanup error:', e);
+        console.warn('EPUB cleanup error:', e);
       }
     };
-  }, [url]);
+  }, [url, retryCount]);
 
   // Update theme when changed
   useEffect(() => {
@@ -251,7 +292,7 @@ export const EPUBViewer: React.FC<EPUBViewerProps> = ({ url, bookTitle }) => {
       onTouchEnd={handleTouchEnd}
     >
       {/* Reader secondary control toolbar */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-stone-800 bg-stone-900/90 backdrop-blur text-xs z-20">
+      <div className="flex items-center justify-between px-3 sm:px-5 py-2 border-b border-stone-800 bg-stone-900/90 backdrop-blur text-xs z-20 gap-2">
         {/* Left: Table of Contents button & chapter title */}
         <div className="flex items-center space-x-2 min-w-0">
           <button
@@ -264,7 +305,7 @@ export const EPUBViewer: React.FC<EPUBViewerProps> = ({ url, bookTitle }) => {
             <span className="hidden sm:inline font-semibold text-[11px]">Chapters ({toc.length})</span>
           </button>
           {currentChapter && (
-            <span className="text-[11px] text-stone-400 truncate max-w-[180px] sm:max-w-xs font-medium">
+            <span className="text-[11px] text-stone-400 truncate max-w-[150px] sm:max-w-xs font-medium">
               {currentChapter}
             </span>
           )}
@@ -326,17 +367,26 @@ export const EPUBViewer: React.FC<EPUBViewerProps> = ({ url, bookTitle }) => {
       {/* Main EPUB Viewer Container */}
       <div className="relative flex-grow w-full h-full flex items-center justify-center overflow-hidden">
         {loading && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center space-y-3 z-10 bg-stone-950/70 backdrop-blur-sm">
+          <div className="absolute inset-0 flex flex-col items-center justify-center space-y-3 z-10 bg-stone-950/80 backdrop-blur-sm p-4 text-center">
             <Loader2 className="animate-spin text-brand-500" size={36} />
-            <p className="text-xs font-medium text-stone-300">Rendering EPUB book format...</p>
+            <p className="text-xs font-semibold text-stone-200">{loadingStatus}</p>
+            <p className="text-[11px] text-stone-400">Loading lightweight EPUB pages...</p>
           </div>
         )}
 
         {error && (
-          <div className="p-8 text-center max-w-md space-y-3 bg-stone-900 rounded-2xl border border-stone-800 text-red-400 z-10">
+          <div className="p-8 text-center max-w-md space-y-4 bg-stone-900 rounded-2xl border border-stone-800 text-red-400 z-10 m-4 shadow-xl">
             <AlertCircle size={36} className="mx-auto" />
-            <h3 className="font-serif text-base font-bold text-white">EPUB Rendering Error</h3>
-            <p className="text-xs text-stone-400">{error}</p>
+            <h3 className="font-serif text-base font-bold text-white">Unable to Open Book</h3>
+            <p className="text-xs text-stone-400 leading-relaxed">{error}</p>
+            <button
+              onClick={() => setRetryCount((prev) => prev + 1)}
+              className="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white font-bold text-xs rounded-xl shadow transition-all flex items-center space-x-1.5 mx-auto"
+              type="button"
+            >
+              <RotateCcw size={14} />
+              <span>Retry Loading</span>
+            </button>
           </div>
         )}
 
@@ -347,24 +397,28 @@ export const EPUBViewer: React.FC<EPUBViewerProps> = ({ url, bookTitle }) => {
         />
 
         {/* Side Click Navigation Buttons for Desktops */}
-        <button
-          onClick={handlePrev}
-          className="hidden md:flex absolute left-3 top-1/2 -translate-y-1/2 p-3 rounded-full bg-stone-900/80 hover:bg-stone-800 text-stone-300 hover:text-white border border-stone-700/60 shadow-lg transition-all z-10"
-          aria-label="Previous Page"
-          title="Previous Page (Left Arrow)"
-          type="button"
-        >
-          <ChevronLeft size={22} />
-        </button>
-        <button
-          onClick={handleNext}
-          className="hidden md:flex absolute right-3 top-1/2 -translate-y-1/2 p-3 rounded-full bg-stone-900/80 hover:bg-stone-800 text-stone-300 hover:text-white border border-stone-700/60 shadow-lg transition-all z-10"
-          aria-label="Next Page"
-          title="Next Page (Right Arrow)"
-          type="button"
-        >
-          <ChevronRight size={22} />
-        </button>
+        {!loading && !error && (
+          <>
+            <button
+              onClick={handlePrev}
+              className="hidden md:flex absolute left-3 top-1/2 -translate-y-1/2 p-3 rounded-full bg-stone-900/80 hover:bg-stone-800 text-stone-300 hover:text-white border border-stone-700/60 shadow-lg transition-all z-10"
+              aria-label="Previous Page"
+              title="Previous Page (Left Arrow)"
+              type="button"
+            >
+              <ChevronLeft size={22} />
+            </button>
+            <button
+              onClick={handleNext}
+              className="hidden md:flex absolute right-3 top-1/2 -translate-y-1/2 p-3 rounded-full bg-stone-900/80 hover:bg-stone-800 text-stone-300 hover:text-white border border-stone-700/60 shadow-lg transition-all z-10"
+              aria-label="Next Page"
+              title="Next Page (Right Arrow)"
+              type="button"
+            >
+              <ChevronRight size={22} />
+            </button>
+          </>
+        )}
       </div>
 
       {/* Bottom Floating Navigation & Reading Progress */}
@@ -380,7 +434,7 @@ export const EPUBViewer: React.FC<EPUBViewerProps> = ({ url, bookTitle }) => {
 
         <div className="flex items-center space-x-3">
           <div className="flex items-center space-x-1.5 text-[11px] font-medium text-stone-400">
-            <span>{progressPercent}% completed</span>
+            <span>{progressPercent > 0 ? `${progressPercent}% completed` : 'Reading'}</span>
             {currentLocationText && <span className="hidden sm:inline">• {currentLocationText}</span>}
           </div>
         </div>
@@ -415,7 +469,7 @@ export const EPUBViewer: React.FC<EPUBViewerProps> = ({ url, bookTitle }) => {
 
             <div className="p-3 overflow-y-auto flex-grow divide-y divide-stone-800/60 font-sans text-xs">
               {toc.length === 0 ? (
-                <p className="p-4 text-center text-stone-500 text-xs">No explicit chapters listed.</p>
+                <p className="p-4 text-center text-stone-500 text-xs">No explicit chapters listed in table of contents.</p>
               ) : (
                 toc.map((item, idx) => (
                   <button

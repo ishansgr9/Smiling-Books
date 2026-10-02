@@ -110,6 +110,18 @@ func getIPHash(r *http.Request) string {
 	return hex.EncodeToString(hash[:])
 }
 
+func (h *Handler) isAuthorizedAdmin(r *http.Request) bool {
+	authHeader := r.Header.Get("Authorization")
+	if strings.HasPrefix(authHeader, "Bearer ") {
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+		claims, err := auth.VerifyToken(token, h.jwtSecret)
+		if err == nil && claims != nil && claims.Role == "ADMIN" {
+			return true
+		}
+	}
+	return false
+}
+
 // --- Public Handlers ---
 
 func (h *Handler) ListBooks(w http.ResponseWriter, r *http.Request) {
@@ -160,7 +172,7 @@ func (h *Handler) GetBook(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
 		return
 	}
-	if book == nil || !book.Published {
+	if book == nil || (!book.Published && !h.isAuthorizedAdmin(r)) {
 		respondError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "Book not found or unpublished")
 		return
 	}
@@ -180,7 +192,7 @@ func (h *Handler) ReadBook(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
 		return
 	}
-	if book == nil || !book.Published {
+	if book == nil || (!book.Published && !h.isAuthorizedAdmin(r)) {
 		respondError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "Book not found or unavailable")
 		return
 	}
@@ -781,7 +793,7 @@ func (h *Handler) StreamPDF(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
 		return
 	}
-	if book == nil || !book.Published {
+	if book == nil || (!book.Published && !h.isAuthorizedAdmin(r)) {
 		respondError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "Book not found or unavailable")
 		return
 	}
@@ -835,7 +847,7 @@ func (h *Handler) StreamEPUB(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
 		return
 	}
-	if book == nil || !book.Published {
+	if book == nil || (!book.Published && !h.isAuthorizedAdmin(r)) {
 		respondError(w, http.StatusNotFound, "BOOK_NOT_FOUND", "Book not found or unavailable")
 		return
 	}
