@@ -223,12 +223,13 @@ export const PDFReader: React.FC = () => {
 
         const apiBaseUrl = getApiBaseUrl();
         if (pdfExists) {
-          setPdfURL(readData.pdf_url || `${apiBaseUrl}/api/books/${id}/pdf`);
+          // Always use the backend proxy for PDF — signed cloud storage URLs (GCS/S3)
+          // block cross-origin requests from the pdf.js worker (CORS).
+          // Our backend proxy route passes through the CORS middleware correctly.
+          setPdfURL(`${apiBaseUrl}/api/books/${id}/pdf`);
         }
         if (epubExists) {
-          // Always use the backend proxy for EPUB — signed cloud storage URLs (GCS/S3)
-          // block cross-origin fetch() requests (CORS). Our backend proxy route
-          // passes through our CORS middleware which correctly sets Allow-Origin headers.
+          // Always use the backend proxy for EPUB — same CORS reason as above.
           setEpubURL(`${apiBaseUrl}/api/books/${id}/epub`);
         }
 
