@@ -21,6 +21,8 @@ type BookRepository interface {
 	IncrementReadCount(ctx context.Context, id string, ipHash string) error
 
 	GetCategories(ctx context.Context) ([]models.Category, error)
+	CreateCategory(ctx context.Context, name string) (*models.Category, error)
+	DeleteCategory(ctx context.Context, id int) error
 	GetLanguages(ctx context.Context) ([]models.Language, error)
 	GetAuthors(ctx context.Context) ([]models.Author, error)
 	GetAnalytics(ctx context.Context) (*models.Analytics, error)
@@ -421,6 +423,49 @@ func (r *PostgresBookRepository) GetCategories(ctx context.Context) ([]models.Ca
 		categories = append(categories, c)
 	}
 	return categories, nil
+}
+
+func (r *PostgresBookRepository) CreateCategory(ctx context.Context, name string) (*models.Category, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, errors.New("category name cannot be empty")
+	}
+
+	var existing models.Category
+	err := r.db.QueryRow(ctx, "SELECT id, name FROM categories WHERE LOWER(name) = LOWER($1)", name).Scan(&existing.ID, &existing.Name)
+	if err == nil {
+		return nil, fmt.Errorf("category '%s' already exists", existing.Name)
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
+	}
+
+	var cat models.Category
+	err = r.db.QueryRow(ctx, "INSERT INTO categories (name) VALUES ($1) RETURNING id, name", name).Scan(&cat.ID, &cat.Name)
+	if err != nil {
+		return nil, err
+	}
+	return &cat, nil
+}
+
+func (r *PostgresBookRepository) DeleteCategory(ctx context.Context, id int) error {
+	var count int
+	err := r.db.QueryRow(ctx, "SELECT COUNT(*) FROM books WHERE category_id = $1", id).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return fmt.Errorf("cannot delete category: %d book(s) are currently assigned to it", count)
+	}
+
+	tag, err := r.db.Exec(ctx, "DELETE FROM categories WHERE id = $1", id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return errors.New("category not found")
+	}
+	return nil
 }
 
 func (r *PostgresBookRepository) GetLanguages(ctx context.Context) ([]models.Language, error) {

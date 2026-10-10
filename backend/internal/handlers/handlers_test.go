@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -41,6 +42,15 @@ func (m *mockBookRepository) IncrementReadCount(ctx context.Context, id string, 
 }
 func (m *mockBookRepository) GetCategories(ctx context.Context) ([]models.Category, error) {
 	return nil, nil
+}
+func (m *mockBookRepository) CreateCategory(ctx context.Context, name string) (*models.Category, error) {
+	if name == "Duplicate" {
+		return nil, errors.New("category already exists")
+	}
+	return &models.Category{ID: 10, Name: name}, nil
+}
+func (m *mockBookRepository) DeleteCategory(ctx context.Context, id int) error {
+	return nil
 }
 func (m *mockBookRepository) GetLanguages(ctx context.Context) ([]models.Language, error) {
 	return nil, nil
@@ -174,5 +184,51 @@ func TestEpubAndPdfMIMETypes(t *testing.T) {
 		if isValid != tc.expected {
 			t.Errorf("Filename %s: expected valid=%v, got %v", tc.filename, tc.expected, isValid)
 		}
+	}
+}
+
+func TestCategoryHandlers(t *testing.T) {
+	h := &Handler{
+		repo:      &mockBookRepository{},
+		jwtSecret: "test_secret",
+	}
+
+	// 1. CreateCategory with valid name
+	reqBody := `{"name":"Graphic Novels"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/categories", strings.NewReader(reqBody))
+	rec := httptest.NewRecorder()
+	h.CreateCategory(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Errorf("Expected HTTP 201 Created, got %d. Body: %s", rec.Code, rec.Body.String())
+	}
+
+	// 2. CreateCategory with empty name
+	emptyReq := httptest.NewRequest(http.MethodPost, "/api/admin/categories", strings.NewReader(`{"name":"   "}`))
+	recEmpty := httptest.NewRecorder()
+	h.CreateCategory(recEmpty, emptyReq)
+
+	if recEmpty.Code != http.StatusBadRequest {
+		t.Errorf("Expected HTTP 400 Bad Request for empty name, got %d", recEmpty.Code)
+	}
+
+	// 3. DeleteCategory with valid ID
+	mux := http.NewServeMux()
+	mux.HandleFunc("DELETE /api/admin/categories/{id}", h.DeleteCategory)
+	delReq := httptest.NewRequest(http.MethodDelete, "/api/admin/categories/10", nil)
+	delRec := httptest.NewRecorder()
+	mux.ServeHTTP(delRec, delReq)
+
+	if delRec.Code != http.StatusOK {
+		t.Errorf("Expected HTTP 200 OK for delete, got %d. Body: %s", delRec.Code, delRec.Body.String())
+	}
+
+	// 4. DeleteCategory with invalid ID
+	delInvalidReq := httptest.NewRequest(http.MethodDelete, "/api/admin/categories/abc", nil)
+	delInvalidRec := httptest.NewRecorder()
+	mux.ServeHTTP(delInvalidRec, delInvalidReq)
+
+	if delInvalidRec.Code != http.StatusBadRequest {
+		t.Errorf("Expected HTTP 400 Bad Request for invalid category ID, got %d", delInvalidRec.Code)
 	}
 }

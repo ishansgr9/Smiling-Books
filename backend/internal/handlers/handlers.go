@@ -70,6 +70,8 @@ func RegisterRoutes(mux *http.ServeMux, h *Handler, jwtSecret string) {
 	mux.Handle("POST /api/admin/books/{id}/upload-epub", authMiddleware(http.HandlerFunc(h.UploadEPUB)))
 	mux.Handle("POST /api/admin/books/{id}/upload-book", authMiddleware(http.HandlerFunc(h.UploadBookFile)))
 	mux.Handle("GET /api/admin/analytics", authMiddleware(http.HandlerFunc(h.GetAnalytics)))
+	mux.Handle("POST /api/admin/categories", authMiddleware(http.HandlerFunc(h.CreateCategory)))
+	mux.Handle("DELETE /api/admin/categories/{id}", authMiddleware(http.HandlerFunc(h.DeleteCategory)))
 }
 
 // Helpers
@@ -250,6 +252,59 @@ func (h *Handler) ListCategories(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, http.StatusOK, categories)
+}
+
+func (h *Handler) CreateCategory(w http.ResponseWriter, r *http.Request) {
+	var req models.CategoryRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid JSON payload")
+		return
+	}
+
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		respondError(w, http.StatusBadRequest, "INVALID_REQUEST", "Category name cannot be empty")
+		return
+	}
+
+	cat, err := h.repo.CreateCategory(r.Context(), name)
+	if err != nil {
+		if strings.Contains(err.Error(), "already exists") {
+			respondError(w, http.StatusConflict, "CATEGORY_EXISTS", err.Error())
+			return
+		}
+		respondError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, cat)
+}
+
+func (h *Handler) DeleteCategory(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id <= 0 {
+		respondError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid category ID")
+		return
+	}
+
+	err = h.repo.DeleteCategory(r.Context(), id)
+	if err != nil {
+		if strings.Contains(err.Error(), "assigned to it") || strings.Contains(err.Error(), "foreign key constraint") {
+			respondError(w, http.StatusConflict, "CATEGORY_IN_USE", err.Error())
+			return
+		}
+		if strings.Contains(err.Error(), "not found") {
+			respondError(w, http.StatusNotFound, "NOT_FOUND", "Category not found")
+			return
+		}
+		respondError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{
+		"message": "Category deleted successfully",
+	})
 }
 
 func (h *Handler) ListLanguages(w http.ResponseWriter, r *http.Request) {

@@ -237,3 +237,40 @@ Uploads either a PDF or EPUB document file (`multipart/form-data`, file field: `
 
 ### `GET /api/admin/analytics`
 Fetches administrative dashboard metrics (total books, published count, pending review count, total read events, popular books, category distribution).
+
+---
+
+### `POST /api/admin/categories`
+Creates a new category.
+- Header: `Authorization: Bearer <jwt_token>`
+- Request Body:
+```json
+{
+  "name": "Graphic Novels"
+}
+```
+- Response (201 Created):
+```json
+{
+  "success": true,
+  "data": {
+    "id": 12,
+    "name": "Graphic Novels"
+  }
+}
+```
+
+---
+
+### `DELETE /api/admin/categories/{id}`
+Deletes an existing category. Blocked with `409 Conflict` / `400 Bad Request` if any books in the catalog are currently assigned to the category.
+- Header: `Authorization: Bearer <jwt_token>`
+- Response (200 OK):
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Category deleted successfully"
+  }
+}
+```

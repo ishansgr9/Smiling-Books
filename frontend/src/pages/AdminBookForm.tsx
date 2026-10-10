@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import api from '../services/api';
-import type { Book } from '../types';
-import { ArrowLeft, Loader2, Save, FileText, Image, AlertTriangle, ShieldCheck } from 'lucide-react';
+import type { Book, Category } from '../types';
+import { ArrowLeft, Loader2, Save, FileText, Image, AlertTriangle, ShieldCheck, Tag, ChevronDown } from 'lucide-react';
+import ManageCategoriesModal from '../components/ManageCategoriesModal';
 
 export const AdminBookForm: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -15,6 +16,9 @@ export const AdminBookForm: React.FC = () => {
   const [description, setDescription] = useState('');
   const [languageName, setLanguageName] = useState('');
   const [categoryName, setCategoryName] = useState('');
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [ageGroup, setAgeGroup] = useState('5-8');
   const [publicationYear, setPublicationYear] = useState<number | ''>('');
   const [rightsStatus, setRightsStatus] = useState<'PUBLIC_DOMAIN' | 'LICENSED' | 'PERMISSION_GRANTED' | 'PENDING_REVIEW'>('PENDING_REVIEW');
@@ -37,6 +41,23 @@ export const AdminBookForm: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Fetch categories
+  const fetchCategories = async () => {
+    setCategoriesLoading(true);
+    try {
+      const cats = await api.get<Category[]>('/api/categories');
+      setCategories(cats || []);
+    } catch (e) {
+      console.error('Failed to load categories:', e);
+    } finally {
+      setCategoriesLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchCategories();
+  }, []);
 
   // Fetch book if editing
   useEffect(() => {
@@ -257,18 +278,57 @@ export const AdminBookForm: React.FC = () => {
 
             {/* Category */}
             <div className="space-y-2">
-              <label htmlFor="category" className="block text-xs font-semibold text-stone-500 uppercase tracking-wider">
-                Category *
-              </label>
-              <input
-                id="category"
-                type="text"
-                required
-                value={categoryName}
-                onChange={(e) => setCategoryName(e.target.value)}
-                placeholder="e.g. Children's Literature"
-                className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-sm focus:ring-1 focus:ring-brand-500 focus:border-brand-500 text-stone-800 font-sans"
-              />
+              <div className="flex items-center justify-between">
+                <label htmlFor="category" className="block text-xs font-semibold text-stone-500 uppercase tracking-wider">
+                  Category *
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setIsCategoryModalOpen(true)}
+                  className="inline-flex items-center space-x-1 text-xs font-semibold text-brand-600 hover:text-brand-700 transition-colors"
+                >
+                  <Tag size={12} />
+                  <span>Manage Categories</span>
+                </button>
+              </div>
+
+              <div className="relative">
+                <select
+                  id="category"
+                  required
+                  value={categoryName}
+                  onChange={(e) => {
+                    if (e.target.value === '__MANAGE__') {
+                      setIsCategoryModalOpen(true);
+                    } else {
+                      setCategoryName(e.target.value);
+                    }
+                  }}
+                  className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-sm focus:ring-1 focus:ring-brand-500 focus:border-brand-500 text-stone-800 font-sans appearance-none pr-10 cursor-pointer"
+                >
+                  <option value="" disabled>
+                    {categoriesLoading ? 'Loading categories...' : 'Select a category...'}
+                  </option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.name}>
+                      {c.name}
+                    </option>
+                  ))}
+                  {/* Keep current category visible if editing a book with category not in list */}
+                  {categoryName && !categories.some((c) => c.name.toLowerCase() === categoryName.toLowerCase()) && (
+                    <option value={categoryName}>{categoryName} (Current)</option>
+                  )}
+                  <option value="__MANAGE__" className="font-semibold text-brand-600">
+                    + Add or remove categories...
+                  </option>
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3.5 text-stone-400">
+                  <ChevronDown size={16} />
+                </div>
+              </div>
+              <p className="text-[11px] text-stone-400">
+                Choose an existing category or click &quot;Manage Categories&quot; to add a new category or remove unused ones.
+              </p>
             </div>
 
             {/* Language */}
@@ -560,6 +620,16 @@ export const AdminBookForm: React.FC = () => {
         </section>
 
       </div>
+
+      {/* Category Management Modal */}
+      <ManageCategoriesModal
+        isOpen={isCategoryModalOpen}
+        onClose={() => setIsCategoryModalOpen(false)}
+        categories={categories}
+        onCategoriesChange={fetchCategories}
+        onSelectCategory={(name) => setCategoryName(name)}
+        selectedCategoryName={categoryName}
+      />
 
     </div>
   );

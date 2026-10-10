@@ -79,6 +79,10 @@ type CategoryStat struct {
 }
 
 // Request payloads
+type CategoryRequest struct {
+	Name string `json:"name"`
+}
+
 type LoginRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`

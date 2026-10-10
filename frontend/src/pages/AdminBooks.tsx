@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import type { Book } from '../types';
+import type { Book, Category } from '../types';
 import api from '../services/api';
-import { Edit2, Trash2, CheckCircle2, XCircle, Search, BookOpen, AlertTriangle, Loader2 } from 'lucide-react';
+import { Edit2, Trash2, CheckCircle2, XCircle, Search, BookOpen, AlertTriangle, Loader2, Tag } from 'lucide-react';
+import ManageCategoriesModal from '../components/ManageCategoriesModal';
 
 export const AdminBooks: React.FC = () => {
   const [books, setBooks] = useState<Book[]>([]);
@@ -13,6 +14,23 @@ export const AdminBooks: React.FC = () => {
 
   // Modal deletion tracking
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  // Category management
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+
+  const fetchCategories = async () => {
+    try {
+      const cats = await api.get<Category[]>('/api/categories');
+      setCategories(cats || []);
+    } catch (e) {
+      console.error('Failed to load categories:', e);
+    }
+  };
+
+  useEffect(() => {
+    fetchCategories();
+  }, []);
 
   const fetchBooks = async () => {
     setLoading(true);
@@ -93,12 +111,22 @@ export const AdminBooks: React.FC = () => {
             Smiling Books Library Catalog Control • {totalBooks} Books
           </p>
         </div>
-        <Link
-          to="/admin/books/new"
-          className="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white font-bold text-xs rounded-xl shadow transition-all"
-        >
-          Add New Book
-        </Link>
+        <div className="flex items-center space-x-2.5">
+          <button
+            type="button"
+            onClick={() => setIsCategoryModalOpen(true)}
+            className="px-3.5 py-2 bg-white hover:bg-stone-50 text-stone-700 border border-stone-200 font-bold text-xs rounded-xl shadow-sm transition-all flex items-center space-x-1.5"
+          >
+            <Tag size={13} className="text-brand-600" />
+            <span>Manage Categories</span>
+          </button>
+          <Link
+            to="/admin/books/new"
+            className="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white font-bold text-xs rounded-xl shadow transition-all"
+          >
+            Add New Book
+          </Link>
+        </div>
       </div>
 
       {/* Search Input */}
@@ -372,6 +400,14 @@ export const AdminBooks: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Category Management Modal */}
+      <ManageCategoriesModal
+        isOpen={isCategoryModalOpen}
+        onClose={() => setIsCategoryModalOpen(false)}
+        categories={categories}
+        onCategoriesChange={fetchCategories}
+      />
 
     </div>
   );
